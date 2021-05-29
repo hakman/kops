@@ -1,0 +1,32 @@
+name: Update Cocoapods Dependencies
+on:
+  push:
+    branches:
+      - dependabot/go_modules/**
+  pull_request:
+    branches:
+      - dependabot/go_modules/**
+
+jobs:
+  run:
+    name: Update Bazel files
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Set up go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.16.3
+
+      - uses: actions/checkout@v2
+        with:
+          path: ${{ env.GOPATH }}/src/k8s.io/kops
+
+      - name: make gomod
+        working-directory: ${{ env.GOPATH }}/src/k8s.io/kops
+        run: |
+          make gomod
+
+      - uses: stefanzweifel/git-auto-commit-action@v4.1.1
+        with:
+          commit_message: Update Bazel files
+          branch: ${{ github.head_ref }}
