@@ -1,9 +1,13 @@
 ---
 name: CI
 
-'on':
-  - push
-  - pull_request
+on:
+  pull_request:
+    branches:
+    - '**'
+  push:
+    branches-ignore:
+    - 'dependabot/**'
 
 env:
   GOPROXY: https://proxy.golang.org
