@@ -1,15 +1,20 @@
-name: Update Cocoapods Dependencies
+---
+name: Update Bazel
+
 on:
-  push:
-    branches:
-      - dependabot/go_modules/**
   pull_request:
     branches:
-      - dependabot/go_modules/**
+    - dependabot/go_modules/**
+  push:
+    branches:
+    - dependabot/go_modules/**
+
+env:
+  GOPROXY: https://proxy.golang.org
+  GOPATH: ${{ github.workspace }}/go
 
 jobs:
-  run:
-    name: Update Bazel files
+  update-bazel:
     runs-on: ubuntu-20.04
     steps:
       - name: Set up go
@@ -26,7 +31,9 @@ jobs:
         run: |
           make gomod
 
-      - uses: stefanzweifel/git-auto-commit-action@v4.1.1
+      - name: Commit
+        uses: stefanzweifel/git-auto-commit-action@v4.1.1
         with:
           commit_message: Update Bazel files
           branch: ${{ github.head_ref }}
+          repository: ${{ env.GOPATH }}/src/k8s.io/kops
