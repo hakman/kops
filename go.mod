@@ -86,7 +86,7 @@ require (
 	k8s.io/api v0.21.0
 	k8s.io/apimachinery v0.21.0
 	k8s.io/cli-runtime v0.21.0
-	k8s.io/client-go v0.21.0
+	k8s.io/client-go v0.21.1
 	k8s.io/cloud-provider-openstack v1.21.0
 	k8s.io/component-base v0.21.0
 	k8s.io/gengo v0.0.0-20210203185629-de9496dff47b
