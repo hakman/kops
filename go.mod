@@ -72,7 +72,7 @@ require (
 	github.com/spotinst/spotinst-sdk-go v1.85.0
 	github.com/stretchr/testify v1.7.0
 	github.com/weaveworks/mesh v0.0.0-20191105120815-58dbcc3e8e63
-	github.com/zclconf/go-cty v1.8.2
+	github.com/zclconf/go-cty v1.9.1
 	golang.org/x/crypto v0.0.0-20210421170649-83a5a9bb288b
 	golang.org/x/mod v0.4.2 // indirect
 	golang.org/x/net v0.0.0-20210428140749-89ef3d95e781
