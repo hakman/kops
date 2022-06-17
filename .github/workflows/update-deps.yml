@@ -21,7 +21,7 @@ jobs:
       - name: Update Dependencies
         id: update_deps
         run: |
-          go get -u ./...
+          go get $(go list -f '{{if not (or .Main .Indirect)}}{{.Path}}{{end}}' -mod=mod -m all)
           go mod tidy
           go mod vendor
           echo "::set-output name=changes::$(git status --porcelain)"
