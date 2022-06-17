@@ -7,7 +7,7 @@ go 1.18
 require (
 	cloud.google.com/go/compute v1.6.1
 	github.com/Azure/azure-pipeline-go v0.2.3
-	github.com/Azure/azure-sdk-for-go v63.4.0+incompatible
+	github.com/Azure/azure-sdk-for-go v65.0.0+incompatible
 	github.com/Azure/azure-storage-blob-go v0.15.0
 	github.com/Azure/go-autorest/autorest v0.11.27
 	github.com/Azure/go-autorest/autorest/azure/auth v0.5.11
@@ -61,7 +61,7 @@ require (
 	k8s.io/cli-runtime v0.24.0
 	k8s.io/client-go v0.24.0
 	k8s.io/cloud-provider-aws v1.24.0
-	k8s.io/cloud-provider-gcp/providers v0.23.0
+	k8s.io/cloud-provider-gcp/providers v0.21.0
 	k8s.io/component-base v0.24.0
 	k8s.io/gengo v0.0.0-20220307231824-4627b89bbf1b
 	k8s.io/klog/v2 v2.60.1
