@@ -6,7 +6,7 @@ env:
   GOPROXY: https://proxy.golang.org
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   update-deps:
