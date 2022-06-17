@@ -2,7 +2,7 @@ module k8s.io/kops
 
 go 1.18
 
-// Version kubernetes-1.24.0 => tag v0.24.0
+replace k8s.io/cloud-provider => k8s.io/cloud-provider v0.24.0
 
 require (
 	cloud.google.com/go/compute v1.6.1
