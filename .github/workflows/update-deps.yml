@@ -21,6 +21,7 @@ jobs:
         id: update_deps
         run: |
           go get $(go list -f '{{if not (or .Main .Indirect)}}{{.Path}}{{end}}' -mod=mod -m all)
+          make gomod
           echo "::set-output name=changes::$(git status --porcelain)"
       - name: Create PR
         if: ${{ steps.update_deps.outputs.changes != '' }}
