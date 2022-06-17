@@ -4,7 +4,6 @@ on:
 
 env:
   GOPROXY: https://proxy.golang.org
-  GOPATH: ${{ github.workspace }}/go
 
 permissions:
   contents: read
