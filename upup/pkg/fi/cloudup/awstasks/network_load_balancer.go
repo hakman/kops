@@ -441,6 +441,10 @@ func (*NetworkLoadBalancer) CheckChanges(a, e, changes *NetworkLoadBalancer) err
 		if len(changes.SubnetMappings) > 0 {
 			expectedSubnets := make(map[string]*string)
 			for _, s := range e.SubnetMappings {
+				if s.Subnet.ID == nil {
+					return fmt.Errorf("subnet ID is required: %+v", s.Subnet)
+				}
+
 				if s.AllocationID != nil {
 					expectedSubnets[*s.Subnet.ID] = s.AllocationID
 				} else if s.PrivateIPv4Address != nil {
