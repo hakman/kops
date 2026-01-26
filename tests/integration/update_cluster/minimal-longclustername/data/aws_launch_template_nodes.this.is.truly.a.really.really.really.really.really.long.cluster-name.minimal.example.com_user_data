@@ -122,7 +122,7 @@ ensure-install-dir
 
 cat > conf/kube_env.yaml << '__EOF_KUBE_ENV'
 CloudProvider: aws
-ClusterName: this.is.truly.a.really.really.long.cluster-name.minimal.example.com
+ClusterName: this.is.truly.a.really.really.really.really.really.long.cluster-name.minimal.example.com
 ConfigServer:
   CACertificates: |
     -----BEGIN CERTIFICATE-----
@@ -146,10 +146,10 @@ ConfigServer:
     9B7UD2ushcVFPtaeoL9Gfu8aY4KJBeqqg5ojl4qmRnThjw==
     -----END CERTIFICATE-----
   servers:
-  - https://kops-controller.internal.this.is.truly.a.really.really.long.cluster-name.minimal.example.com:3988/
+  - https://kops-controller.internal.this.is.truly.a.really.really.really.really.really.long.cluster-name.minimal.example.com:3988/
 InstanceGroupName: nodes
 InstanceGroupRole: Node
-NodeupConfigHash: CzyJqIP0Ty4rxibq1hf+ufI8uruhKtHnUlxaNDZ56BQ=
+NodeupConfigHash: NzKrNAJ6nj+o7eqDMwdFxyeU3nn2iJQjwiOGoXREifM=
 
 __EOF_KUBE_ENV
 
