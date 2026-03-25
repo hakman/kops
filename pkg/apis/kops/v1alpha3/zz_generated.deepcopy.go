@@ -2849,6 +2849,11 @@ func (in *InstanceRequirementsSpec) DeepCopyInto(out *InstanceRequirementsSpec) 
 		*out = new(MinMaxSpec)
 		(*in).DeepCopyInto(*out)
 	}
+	if in.ExcludedInstanceTypes != nil {
+		in, out := &in.ExcludedInstanceTypes, &out.ExcludedInstanceTypes
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	return
 }
 

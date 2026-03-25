@@ -279,6 +279,10 @@ type MixedInstancesPolicySpec struct {
 type InstanceRequirementsSpec struct {
 	CPU    *MinMaxSpec `json:"cpu,omitempty"`
 	Memory *MinMaxSpec `json:"memory,omitempty"`
+	// ExcludedInstanceTypes is a list of instance types which will not be used by the instance group.
+	// You can use strings with one or more wild cards, represented by an asterisk (*), to exclude an
+	// instance type, size, or generation.
+	ExcludedInstanceTypes []string `json:"excludedInstanceTypes,omitempty"`
 }
 
 type MinMaxSpec struct {
