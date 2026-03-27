@@ -4851,6 +4851,7 @@ func autoConvert_v1alpha2_InstanceRequirementsSpec_To_kops_InstanceRequirementsS
 	} else {
 		out.Memory = nil
 	}
+	out.ExcludedInstanceTypes = in.ExcludedInstanceTypes
 	return nil
 }
 
@@ -4878,6 +4879,7 @@ func autoConvert_kops_InstanceRequirementsSpec_To_v1alpha2_InstanceRequirementsS
 	} else {
 		out.Memory = nil
 	}
+	out.ExcludedInstanceTypes = in.ExcludedInstanceTypes
 	return nil
 }
 

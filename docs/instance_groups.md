@@ -294,6 +294,24 @@ spec:
 
 Note that burstable instances are always included in the set of eligible instances.
 
+You can exclude instance types from the set of eligible instances using `excludedInstanceTypes`.
+You can use strings with one or more wild cards, represented by an asterisk (*), to exclude an instance type, size, or generation.
+For example, `m7i.8xlarge`, `c7*.*`, `m7a.*`, `r*`, `*3*`.
+
+```
+spec:
+  mixedInstancesPolicy:
+    instanceRequirements:
+      cpu:
+        min: "2"
+        max: "16"
+      memory:
+        min: "2G"
+      excludedInstanceTypes:
+      - t2.*
+      - t3.*
+```
+
 ## warmPool (AWS Only)
 
 {{ kops_feature_table(kops_added_default='1.21') }}

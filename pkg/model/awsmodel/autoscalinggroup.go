@@ -577,6 +577,9 @@ func (b *AutoscalingGroupModelBuilder) buildAutoScalingGroupTask(c *fi.CloudupMo
 			} else {
 				ir.MemoryMin = fi.PtrTo(int32(0))
 			}
+			if len(spec.InstanceRequirements.ExcludedInstanceTypes) > 0 {
+				ir.ExcludedInstanceTypes = spec.InstanceRequirements.ExcludedInstanceTypes
+			}
 			t.InstanceRequirements = ir
 		}
 
