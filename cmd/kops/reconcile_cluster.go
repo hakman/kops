@@ -27,6 +27,7 @@ import (
 	"k8s.io/kops/cmd/kops/util"
 	"k8s.io/kops/pkg/apis/kops"
 	"k8s.io/kops/pkg/commands/commandutils"
+	"k8s.io/kops/pkg/kubeconfig"
 	"k8s.io/kops/upup/pkg/fi/cloudup"
 	"k8s.io/kubectl/pkg/util/i18n"
 	"k8s.io/kubectl/pkg/util/templates"
@@ -47,6 +48,8 @@ var (
 
 type ReconcileClusterOptions struct {
 	CoreUpdateClusterOptions
+
+	kubeconfig.CreateKubecfgOptions
 }
 
 func NewCmdReconcileCluster(f *util.Factory, out io.Writer) *cobra.Command {
@@ -61,7 +64,7 @@ func NewCmdReconcileCluster(f *util.Factory, out io.Writer) *cobra.Command {
 		Args:              rootCommand.clusterNameArgs(&options.ClusterName),
 		ValidArgsFunction: commandutils.CompleteClusterName(f, true, false),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			err := RunReconcileCluster(cmd.Context(), f, out, &options.CoreUpdateClusterOptions)
+			err := RunReconcileCluster(cmd.Context(), f, out, options)
 			return err
 		},
 	}
@@ -75,6 +78,8 @@ func NewCmdReconcileCluster(f *util.Factory, out io.Writer) *cobra.Command {
 	// cmd.Flags().StringVar(&options.SSHPublicKey, "ssh-public-key", options.SSHPublicKey, "SSH public key to use (deprecated: use kops create secret instead)")
 	// cmd.Flags().StringVar(&options.OutDir, "out", options.OutDir, "Path to write any local output")
 	// cmd.MarkFlagDirname("out")
+
+	options.CreateKubecfgOptions.AddCommonFlags(cmd.Flags())
 
 	// These flags from the update command are specified to kubeconfig creation
 	//
@@ -115,7 +120,8 @@ func NewCmdReconcileCluster(f *util.Factory, out io.Writer) *cobra.Command {
 // To respect skew policy, it updates the control plane first, then updates the nodes.
 // "update" is probably now smart enough to automatically not update the control plane if it is already at the desired version,
 // but we do it explicitly here to be clearer / safer.
-func RunReconcileCluster(ctx context.Context, f *util.Factory, out io.Writer, c *CoreUpdateClusterOptions) error {
+func RunReconcileCluster(ctx context.Context, f *util.Factory, out io.Writer, options *ReconcileClusterOptions) error {
+	c := &options.CoreUpdateClusterOptions
 	if c.Target == cloudup.TargetTerraform {
 		return fmt.Errorf("reconcile is not supported with terraform")
 	}
@@ -149,6 +155,7 @@ func RunReconcileCluster(ctx context.Context, f *util.Factory, out io.Writer, c 
 		opt := &ValidateClusterOptions{}
 		opt.InitDefaults()
 		opt.ClusterName = c.ClusterName
+		opt.CreateKubecfgOptions = options.CreateKubecfgOptions
 		opt.wait = 10 * time.Minute
 
 		// filter the instance group to only include the control plane
@@ -171,6 +178,7 @@ func RunReconcileCluster(ctx context.Context, f *util.Factory, out io.Writer, c 
 		opt := &RollingUpdateOptions{}
 		opt.InitDefaults()
 		opt.ClusterName = c.ClusterName
+		opt.CreateKubecfgOptions = options.CreateKubecfgOptions
 		opt.InstanceGroupRoles = []string{
 			string(kops.InstanceGroupRoleAPIServer),
 			string(kops.InstanceGroupRoleControlPlane),
@@ -197,6 +205,7 @@ func RunReconcileCluster(ctx context.Context, f *util.Factory, out io.Writer, c 
 		opt := &RollingUpdateOptions{}
 		opt.InitDefaults()
 		opt.ClusterName = c.ClusterName
+		opt.CreateKubecfgOptions = options.CreateKubecfgOptions
 		// Do all roles this time, though we only expect changes to node & bastion roles
 		opt.InstanceGroupRoles = nil
 		opt.Yes = c.Yes
