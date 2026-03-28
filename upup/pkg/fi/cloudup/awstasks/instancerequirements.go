@@ -48,7 +48,7 @@ func findInstanceRequirements(asg *autoscalingtypes.AutoScalingGroup) (*Instance
 				}
 				if override.InstanceRequirements.MemoryMiB != nil {
 					actual.MemoryMax = override.InstanceRequirements.MemoryMiB.Max
-					actual.MemoryMax = override.InstanceRequirements.MemoryMiB.Min
+					actual.MemoryMin = override.InstanceRequirements.MemoryMiB.Min
 				}
 				if len(override.InstanceRequirements.ExcludedInstanceTypes) > 0 {
 					actual.ExcludedInstanceTypes = override.InstanceRequirements.ExcludedInstanceTypes
