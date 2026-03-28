@@ -24,7 +24,9 @@ kops reconcile cluster [CLUSTER] [flags]
 
 ```
       --allow-kops-downgrade   Allow an older version of kOps to update the cluster than last used
+      --api-server string      Override the API server used when communicating with the cluster kube-apiserver
   -h, --help                   help for cluster
+      --use-kubeconfig         Use the server endpoint from the local kubeconfig instead of inferring from cluster name
   -y, --yes                    Create cloud resources, without --yes reconcile is in dry run mode
 ```
 
