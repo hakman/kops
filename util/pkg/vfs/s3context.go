@@ -114,6 +114,7 @@ func (s *S3Context) getClient(ctx context.Context, region string) (*s3.Client, e
 			if endpoint != "" {
 				o.BaseEndpoint = aws.String(endpoint)
 				o.UsePathStyle = true
+				o.DisableLogOutputChecksumValidationSkipped = true
 			} else {
 				o.EndpointResolverV2 = &ResolverV2{}
 			}
