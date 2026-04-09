@@ -31,6 +31,13 @@ spec:
     selector:
       k8s-addon: limit-range.addons.k8s.io
     version: 9.99.0
+  - id: k8s-1.15
+    manifest: cluster-autoscaler.addons.k8s.io/k8s-1.15.yaml
+    manifestHash: 5ad6986c2759d9391517629d35da920cac110319514ea996540a2f3ca0b933e5
+    name: cluster-autoscaler.addons.k8s.io
+    selector:
+      k8s-addon: cluster-autoscaler.addons.k8s.io
+    version: 9.99.0
   - id: k8s-1.22
     manifest: hcloud-cloud-controller.addons.k8s.io/k8s-1.22.yaml
     manifestHash: 7e28838077cb18a39ba60134fbcbc3459c5b95fd7a3aa83999a8032adb47941d

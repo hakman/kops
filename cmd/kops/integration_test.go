@@ -1882,6 +1882,7 @@ func (i *integrationTest) runTestTerraformHetzner(t *testing.T) {
 		"aws_s3_object_nodeupconfig-master-fsn1_content",
 		"aws_s3_object_nodeupconfig-nodes-fsn1_content",
 		"aws_s3_object_"+i.clusterName+"-addons-bootstrap_content",
+		"aws_s3_object_"+i.clusterName+"-addons-cluster-autoscaler.addons.k8s.io-k8s-1.15_content",
 		"aws_s3_object_"+i.clusterName+"-addons-coredns.addons.k8s.io-k8s-1.12_content",
 		"aws_s3_object_"+i.clusterName+"-addons-hcloud-cloud-controller.addons.k8s.io-k8s-1.22_content",
 		"aws_s3_object_"+i.clusterName+"-addons-hcloud-csi-driver.addons.k8s.io-k8s-1.22_content",
