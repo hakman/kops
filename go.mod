@@ -1,7 +1,7 @@
 module k8s.io/kops
 
 // This should be kept in sync with cloudbuild.yaml and the other go.mod files
-go 1.25.8
+go 1.25.9
 
 godebug default=go1.25
 
@@ -75,7 +75,7 @@ require (
 	golang.org/x/net v0.52.0
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/sync v0.20.0
-	golang.org/x/sys v0.42.0
+	golang.org/x/sys v0.43.0
 	google.golang.org/api v0.254.0
 	google.golang.org/grpc v1.76.0
 	google.golang.org/protobuf v1.36.10
