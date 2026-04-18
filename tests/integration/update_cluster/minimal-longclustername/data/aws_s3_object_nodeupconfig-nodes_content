@@ -14,7 +14,7 @@ Assets:
   - fe81122c0cc8222470fa3be51f42fa918ac29ffd956ccd2fc408c1997babd2ca@https://github.com/containerd/containerd/releases/download/v2.1.5/containerd-2.1.5-linux-arm64.tar.gz
   - 3c9a8e9e6dafd00db61f4611692447ebab4a56388bae4f82192aed67b66df712@https://github.com/opencontainers/runc/releases/download/v1.3.3/runc.arm64
 CAs: {}
-ClusterName: this.is.truly.a.really.really.long.cluster-name.minimal.example.com
+ClusterName: this.is.truly.a.really.really.really.really.really.long.cluster-name.minimal.example.com
 Hooks:
 - null
 - null
