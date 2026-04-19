@@ -40,7 +40,7 @@ spec:
     version: 9.99.0
   - id: k8s-1.15
     manifest: cluster-autoscaler.addons.k8s.io/k8s-1.15.yaml
-    manifestHash: 6966e358ff554797a53d2bdffc071dd0ac7487ab751814bb8a3c96a248bc6eed
+    manifestHash: 53dcdfcbb3d0b47e39a403e3ba1a9b270512193f37e5c1519848b9bc0497753f
     name: cluster-autoscaler.addons.k8s.io
     selector:
       k8s-addon: cluster-autoscaler.addons.k8s.io
