@@ -3126,8 +3126,7 @@ spec:
             fieldRef:
               apiVersion: v1
               fieldPath: spec.nodeName
-        image: public.ecr.aws/eks/aws-load-balancer-controller:{{ or .CloudProvider.AWS.LoadBalancerController.Version
-          `v3.2.2` }}
+        image: hakman/aws-load-balancer-controller:tag-tg-3
         imagePullPolicy: IfNotPresent
         livenessProbe:
           failureThreshold: 2
