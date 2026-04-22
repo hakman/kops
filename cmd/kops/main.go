@@ -24,12 +24,12 @@ import (
 	"k8s.io/kops"
 )
 
-func main() {
-	ctx := context.Background()
-	if err := run(ctx); err != nil {
-		os.Exit(1)
-	}
-}
+//func main() {
+//	ctx := context.Background()
+//	if err := run(ctx); err != nil {
+//		os.Exit(1)
+//	}
+//}
 
 func run(ctx context.Context) error {
 	// Set up OpenTelemetry.
