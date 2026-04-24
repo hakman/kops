@@ -1408,7 +1408,7 @@ spec:
             - name: "brief"
               value: "true"
             - name: "require-k8s-connectivity"
-              value: "false"
+              value: "true"
           periodSeconds: 30
           successThreshold: 1
           failureThreshold: 10
