@@ -10,7 +10,7 @@ spec:
   authorization:
     rbac: {}
   awsLoadBalancerController:
-    enabled: true
+    enabled: false
   kubernetesApiAccess:
   - {{.publicIP}}
   certManager:
@@ -54,7 +54,7 @@ spec:
   nodeProblemDetector:
     enabled: true
   nodeTerminationHandler:
-    enabled: true
+    enabled: false
     enableSQSTerminationDraining: true
   nonMasqueradeCIDR: 100.64.0.0/10
   podIdentityWebhook:
