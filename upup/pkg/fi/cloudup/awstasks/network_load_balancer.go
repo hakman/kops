@@ -370,7 +370,7 @@ func (e *NetworkLoadBalancer) FindAddresses(c *fi.CloudupContext) ([]string, err
 				addresses = append(addresses, fi.ValueOf(lb.LoadBalancer.DNSName))
 			}
 
-			if cluster.UsesNoneDNS() {
+			if cluster.UsesLoadBalancerForKopsController() {
 				nis, err := cloud.FindELBV2NetworkInterfacesByName(fi.ValueOf(e.VPC.ID), aws.ToString(lb.LoadBalancer.LoadBalancerName))
 				if err != nil {
 					return nil, fmt.Errorf("failed to find network interfaces matching %q: %w", aws.ToString(lb.LoadBalancer.LoadBalancerName), err)

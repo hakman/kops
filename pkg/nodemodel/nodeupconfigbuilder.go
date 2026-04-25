@@ -379,12 +379,14 @@ func (n *nodeUpConfigBuilder) BuildConfig(ig *kops.InstanceGroup, wellKnownAddre
 		controlPlaneIPs = append(controlPlaneIPs, wellKnownAddresses[wellknownservices.KubeAPIServer]...)
 	}
 
-	if cluster.UsesNoneDNS() {
+	// Bake control-plane IPs into /etc/hosts (for api.internal and kops-controller.internal):
+	//   - non-CP roles in any cluster that exposes kops-controller on the API LB,
+	//   - any role on clouds without DNS-based kops-controller discovery.
+	// CP nodes get api.internal=127.0.0.1 from etc_hosts.go's IsMaster branch and don't
+	// connect to kops-controller.internal externally, so they don't need APIServerIPs.
+	if cluster.UsesLoadBalancerForKopsController() && !ig.HasAPIServer() {
 		bootConfig.APIServerIPs = controlPlaneIPs
 	} else {
-		// If we do have a fixed IP, we use it (on some clouds, initially)
-		// This covers the clouds in UseKopsControllerForNodeConfig which use kops-controller for node config,
-		// but don't have a specialized discovery mechanism for finding kops-controller etc.
 		switch cluster.GetCloudProvider() {
 		case kops.CloudProviderHetzner, kops.CloudProviderScaleway, kops.CloudProviderDO, kops.CloudProviderMetal:
 			bootConfig.APIServerIPs = controlPlaneIPs

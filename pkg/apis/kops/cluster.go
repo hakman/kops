@@ -949,6 +949,10 @@ func (c *Cluster) UsesLegacyGossip() bool {
 }
 
 func (c *Cluster) UsesPublicDNS() bool {
+	if c.UsesLegacyGossip() {
+		// Gossip clusters have public/private DNS topology set
+		return false
+	}
 	if c.Spec.Networking.Topology == nil || c.Spec.Networking.Topology.DNS == "" || c.Spec.Networking.Topology.DNS == DNSTypePublic {
 		return true
 	}
@@ -956,6 +960,10 @@ func (c *Cluster) UsesPublicDNS() bool {
 }
 
 func (c *Cluster) UsesPrivateDNS() bool {
+	if c.UsesLegacyGossip() {
+		// Gossip clusters have public/private DNS topology set
+		return false
+	}
 	if c.Spec.Networking.Topology != nil && c.Spec.Networking.Topology.DNS == DNSTypePrivate {
 		return true
 	}
@@ -967,6 +975,25 @@ func (c *Cluster) UsesNoneDNS() bool {
 		return true
 	}
 	return false
+}
+
+// UsesLoadBalancerForKopsController returns true when worker nodes reach kops-controller
+// via the cluster load balancer rather than via gossip-populated /etc/hosts. True for all
+// None-DNS clusters, and for gossip clusters whose API load balancer can host the
+// kops-controller listener.
+func (c *Cluster) UsesLoadBalancerForKopsController() bool {
+	if c.UsesNoneDNS() {
+		// Clusters with none DNS topology may not have c.Spec.API.LoadBalancer set (see Hetzner)
+		return true
+	}
+	if c.UsesPublicDNS() || c.UsesPrivateDNS() || c.Spec.API.LoadBalancer == nil {
+		return false
+	}
+	if c.GetCloudProvider() == CloudProviderAWS {
+		// NLB-only, the kops-controller target group requires a Network Load Balancer.
+		return c.Spec.API.LoadBalancer.Class == LoadBalancerClassNetwork
+	}
+	return true
 }
 
 func (c *Cluster) InstallCNIAssets() bool {
