@@ -220,7 +220,7 @@ func (b *NetworkModelBuilder) Build(c *fi.CloudupModelBuilderContext) error {
 		DestinationApplicationSecurityGroupNames: []*string{fi.PtrTo(b.NameForApplicationSecurityGroupControlPlane())},
 		DestinationPortRange:                     fi.PtrTo("*"),
 	})
-	if b.Cluster.UsesNoneDNS() && b.Cluster.Spec.API.LoadBalancer != nil && b.Cluster.Spec.API.LoadBalancer.Type == kops.LoadBalancerTypePublic {
+	if b.Cluster.UsesLoadBalancerForKopsController() && b.Cluster.Spec.API.LoadBalancer != nil && b.Cluster.Spec.API.LoadBalancer.Type == kops.LoadBalancerTypePublic {
 		// TODO: Limit access to necessary source address prefixes instead of "0.0.0.0/0" and "::/0"
 		nsgTask.SecurityRules = append(nsgTask.SecurityRules, &azuretasks.NetworkSecurityRule{
 			Name:                                     fi.PtrTo("AllowNodesToKubernetesAPI"),
