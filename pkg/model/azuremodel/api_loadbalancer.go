@@ -104,7 +104,7 @@ func (b *APILoadBalancerModelBuilder) Build(c *fi.CloudupModelBuilderContext) er
 		return fmt.Errorf("unknown load balancer Type: %q", lbSpec.Type)
 	}
 
-	if b.Cluster.UsesLegacyGossip() || b.Cluster.UsesPrivateDNS() || b.Cluster.UsesNoneDNS() {
+	if b.Cluster.UsesLoadBalancerForKopsController() {
 		lb.WellKnownServices = append(lb.WellKnownServices, wellknownservices.KopsController)
 
 		// kops-controller probe: HTTPS on 3988 with /healthz
