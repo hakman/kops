@@ -45,8 +45,10 @@ var _ fi.NodeupModelBuilder = &ProtokubeBuilder{}
 
 // Build is responsible for generating the options for protokube
 func (t *ProtokubeBuilder) Build(c *fi.NodeupModelBuilderContext) error {
-	// check is not a master and we are not using gossip (https://github.com/kubernetes/kops/pull/3091)
-	if !t.IsMaster && !t.UsesLegacyGossip() {
+	// Skip protokube on workers when it isn't needed: either the cluster doesn't use gossip,
+	// or this worker bootstraps via kops-controller NLB (hybrid mode, signalled by APIServerIPs
+	// populated on the boot config). Gossip stays alive on control-plane nodes.
+	if !t.IsMaster && (!t.UsesLegacyGossip() || len(t.BootConfig.APIServerIPs) > 0) {
 		klog.V(2).Infof("skipping the provisioning of protokube on the nodes")
 		return nil
 	}
