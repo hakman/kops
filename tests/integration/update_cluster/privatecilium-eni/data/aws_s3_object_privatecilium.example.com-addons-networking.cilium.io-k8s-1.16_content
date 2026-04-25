@@ -728,7 +728,7 @@ spec:
             - name: brief
               value: "true"
             - name: require-k8s-connectivity
-              value: "false"
+              value: "true"
             path: /healthz
             port: 9879
             scheme: HTTP
