@@ -987,7 +987,7 @@ func (c *Cluster) UsesLoadBalancerForKopsController() bool {
 		return lb != nil && lb.Class == LoadBalancerClassNetwork
 	case CloudProviderHetzner:
 		return true
-	case CloudProviderDO, CloudProviderGCE, CloudProviderScaleway:
+	case CloudProviderDO, CloudProviderGCE, CloudProviderOpenstack, CloudProviderScaleway:
 		return c.Spec.API.LoadBalancer != nil
 	default:
 		return false

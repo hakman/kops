@@ -200,7 +200,7 @@ func (b *ServerGroupModelBuilder) buildInstances(c *fi.CloudupModelBuilderContex
 		}
 		c.AddTask(portTask)
 
-		if b.Cluster.UsesNoneDNS() && ig.Spec.Role == kops.InstanceGroupRoleControlPlane {
+		if b.Cluster.UsesLoadBalancerForKopsController() && ig.Spec.Role == kops.InstanceGroupRoleControlPlane {
 			portTask.WellKnownServices = append(portTask.WellKnownServices, wellknownservices.KubeAPIServer)
 		}
 
