@@ -381,6 +381,11 @@ func (n *nodeUpConfigBuilder) BuildConfig(ig *kops.InstanceGroup, wellKnownAddre
 
 	if cluster.UsesNoneDNS() {
 		bootConfig.APIServerIPs = controlPlaneIPs
+	} else if cluster.UsesLoadBalancerForKopsController() && !ig.HasAPIServer() {
+		// Hybrid mode: worker nodes in gossip clusters reach kops-controller via the
+		// cluster load balancer, so they can resolve kops-controller.internal and
+		// api.internal without protokube. Control-plane nodes keep gossip resolution.
+		bootConfig.APIServerIPs = controlPlaneIPs
 	} else {
 		// If we do have a fixed IP, we use it (on some clouds, initially)
 		// This covers the clouds in UseKopsControllerForNodeConfig which use kops-controller for node config,

@@ -174,7 +174,7 @@ func (b *APILoadBalancerBuilder) Build(c *fi.CloudupModelBuilderContext) error {
 			nlbListeners = append(nlbListeners, listener443)
 		}
 
-		if b.Cluster.UsesNoneDNS() {
+		if b.Cluster.UsesLoadBalancerForKopsController() {
 			{
 				nlbListener := &awstasks.NetworkLoadBalancerListener{
 					Name:                fi.PtrTo(b.NLBListenerName("api", wellknownports.KopsControllerPort)),
@@ -225,9 +225,10 @@ func (b *APILoadBalancerBuilder) Build(c *fi.CloudupModelBuilderContext) error {
 			Type:              elbv2types.LoadBalancerTypeEnumNetwork,
 		}
 
-		// Wait for all load balancer components to be created (including network interfaces needed for NoneDNS).
-		// Limiting this to clusters using NoneDNS because load balancer creation is quite slow.
-		if b.Cluster.UsesNoneDNS() {
+		// Wait for all load balancer components to be created (including network interfaces needed to
+		// bake NLB ENI IPs into worker nodeup configs). Limiting this to clusters that actually need
+		// those IPs because load balancer creation is quite slow.
+		if b.Cluster.UsesLoadBalancerForKopsController() {
 			nlb.SetWaitForLoadBalancerReady(true)
 		}
 
@@ -264,7 +265,7 @@ func (b *APILoadBalancerBuilder) Build(c *fi.CloudupModelBuilderContext) error {
 			WellKnownServices: []wellknownservices.WellKnownService{wellknownservices.KubeAPIServer},
 		}
 
-		if b.Cluster.UsesNoneDNS() {
+		if b.Cluster.UsesLoadBalancerForKopsController() {
 			lbSpec.CrossZoneLoadBalancing = fi.PtrTo(true)
 		} else if lbSpec.CrossZoneLoadBalancing == nil {
 			lbSpec.CrossZoneLoadBalancing = fi.PtrTo(false)
@@ -341,7 +342,7 @@ func (b *APILoadBalancerBuilder) Build(c *fi.CloudupModelBuilderContext) error {
 				c.AddTask(tg)
 			}
 
-			if b.Cluster.UsesNoneDNS() {
+			if b.Cluster.UsesLoadBalancerForKopsController() {
 				{
 					groupName := b.NLBTargetGroupName("kops-controller")
 					groupTags := b.CloudTags(groupName, false)
@@ -534,7 +535,7 @@ func (b *APILoadBalancerBuilder) Build(c *fi.CloudupModelBuilderContext) error {
 		}
 	}
 
-	if b.Cluster.UsesNoneDNS() {
+	if b.Cluster.UsesLoadBalancerForKopsController() {
 		nodeGroups, err := b.GetSecurityGroups(kops.InstanceGroupRoleNode)
 		if err != nil {
 			return err
@@ -620,7 +621,7 @@ func (b *APILoadBalancerBuilder) Build(c *fi.CloudupModelBuilderContext) error {
 				SourceGroup:   masterGroup.Task,
 				ToPort:        fi.PtrTo(int32(4)),
 			})
-			if b.Cluster.UsesNoneDNS() {
+			if b.Cluster.UsesLoadBalancerForKopsController() {
 				{
 					nlb.WellKnownServices = append(nlb.WellKnownServices, wellknownservices.KopsController)
 					clb.WellKnownServices = append(clb.WellKnownServices, wellknownservices.KopsController)

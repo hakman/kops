@@ -969,6 +969,31 @@ func (c *Cluster) UsesNoneDNS() bool {
 	return false
 }
 
+// UsesLoadBalancerForKopsController returns true when worker nodes reach kops-controller
+// via the cluster load balancer rather than via gossip-populated /etc/hosts. True for all
+// None-DNS clusters, and for gossip clusters on clouds whose model exposes kops-controller
+// on the API load balancer.
+func (c *Cluster) UsesLoadBalancerForKopsController() bool {
+	if c.UsesNoneDNS() {
+		return true
+	}
+	if !c.UsesLegacyGossip() {
+		return false
+	}
+	switch c.GetCloudProvider() {
+	case CloudProviderAWS:
+		// NLB-only: the kops-controller target group requires a Network Load Balancer.
+		lb := c.Spec.API.LoadBalancer
+		return lb != nil && lb.Class == LoadBalancerClassNetwork
+	case CloudProviderHetzner:
+		return true
+	case CloudProviderDO, CloudProviderScaleway:
+		return c.Spec.API.LoadBalancer != nil
+	default:
+		return false
+	}
+}
+
 func (c *Cluster) InstallCNIAssets() bool {
 	return c.Spec.Networking.AmazonVPC == nil &&
 		c.Spec.Networking.Calico == nil &&

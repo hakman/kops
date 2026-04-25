@@ -493,7 +493,7 @@ func (b *AutoscalingGroupModelBuilder) buildAutoScalingGroupTask(c *fi.CloudupMo
 		if b.UseLoadBalancerForAPI() && ig.HasAPIServer() {
 			if b.UseNetworkLoadBalancer() {
 				t.TargetGroups = append(t.TargetGroups, b.LinkToTargetGroup("tcp"))
-				if b.Cluster.UsesNoneDNS() && ig.IsControlPlane() {
+				if b.Cluster.UsesLoadBalancerForKopsController() && ig.IsControlPlane() {
 					t.TargetGroups = append(t.TargetGroups, b.LinkToTargetGroup("kops-controller"))
 					if b.Cluster.Spec.Networking.Cilium != nil && b.Cluster.Spec.Networking.Cilium.EtcdManaged {
 						t.TargetGroups = append(t.TargetGroups, b.LinkToTargetGroup("etcd-cilium"))
