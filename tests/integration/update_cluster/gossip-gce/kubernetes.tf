@@ -229,6 +229,30 @@ resource "google_compute_firewall" "https-api-ipv6-gossip-k8s-local" {
   target_tags   = ["gossip-k8s-local-k8s-io-role-control-plane"]
 }
 
+resource "google_compute_firewall" "kops-controller-gossip-k8s-local" {
+  allow {
+    ports    = ["3988"]
+    protocol = "tcp"
+  }
+  disabled      = false
+  name          = "kops-controller-gossip-k8s-local"
+  network       = google_compute_network.gossip-k8s-local.name
+  source_ranges = ["0.0.0.0/0"]
+  target_tags   = ["gossip-k8s-local-k8s-io-role-control-plane"]
+}
+
+resource "google_compute_firewall" "kops-controller-ipv6-gossip-k8s-local" {
+  allow {
+    ports    = ["3988"]
+    protocol = "tcp"
+  }
+  disabled      = false
+  name          = "kops-controller-ipv6-gossip-k8s-local"
+  network       = google_compute_network.gossip-k8s-local.name
+  source_ranges = ["::/0"]
+  target_tags   = ["gossip-k8s-local-k8s-io-role-control-plane"]
+}
+
 resource "google_compute_firewall" "lb-health-checks-gossip-k8s-local" {
   allow {
     protocol = "tcp"
@@ -459,6 +483,21 @@ resource "google_compute_forwarding_rule" "api-us-test1-gossip-k8s-local" {
   name                  = "api-us-test1-gossip-k8s-local"
   network               = google_compute_network.gossip-k8s-local.name
   ports                 = ["443"]
+  subnetwork            = google_compute_subnetwork.us-test1-gossip-k8s-local.name
+}
+
+resource "google_compute_forwarding_rule" "kops-controller-us-test1-gossip-k8s-local" {
+  backend_service = google_compute_region_backend_service.api-gossip-k8s-local.id
+  ip_address      = google_compute_address.api-us-test1-gossip-k8s-local.address
+  ip_protocol     = "TCP"
+  labels = {
+    "k8s-io-cluster-name" = "gossip-k8s-local"
+    "name"                = "kops-controller-us-test1"
+  }
+  load_balancing_scheme = "INTERNAL"
+  name                  = "kops-controller-us-test1-gossip-k8s-local"
+  network               = google_compute_network.gossip-k8s-local.name
+  ports                 = ["3988"]
   subnetwork            = google_compute_subnetwork.us-test1-gossip-k8s-local.name
 }
 

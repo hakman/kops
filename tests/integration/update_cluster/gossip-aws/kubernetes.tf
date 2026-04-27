@@ -157,7 +157,7 @@ resource "aws_autoscaling_group" "master-us-test-1a-masters-gossip-k8s-local" {
     propagate_at_launch = true
     value               = "owned"
   }
-  target_group_arns   = [aws_lb_target_group.tcp-gossip-k8s-local-k2q54l.id]
+  target_group_arns   = [aws_lb_target_group.kops-controller-gossip-k8-53agdi.id, aws_lb_target_group.tcp-gossip-k8s-local-k2q54l.id]
   vpc_zone_identifier = [aws_subnet.us-test-1a-gossip-k8s-local.id]
 }
 
@@ -579,7 +579,7 @@ resource "aws_launch_template" "nodes-gossip-k8s-local" {
 }
 
 resource "aws_lb" "api-gossip-k8s-local" {
-  enable_cross_zone_load_balancing = false
+  enable_cross_zone_load_balancing = true
   internal                         = false
   load_balancer_type               = "network"
   name                             = "api-gossip-k8s-local-t08tb7"
@@ -594,6 +594,16 @@ resource "aws_lb" "api-gossip-k8s-local" {
   }
 }
 
+resource "aws_lb_listener" "api-gossip-k8s-local-3988" {
+  default_action {
+    target_group_arn = aws_lb_target_group.kops-controller-gossip-k8-53agdi.id
+    type             = "forward"
+  }
+  load_balancer_arn = aws_lb.api-gossip-k8s-local.id
+  port              = 3988
+  protocol          = "TCP"
+}
+
 resource "aws_lb_listener" "api-gossip-k8s-local-443" {
   default_action {
     target_group_arn = aws_lb_target_group.tcp-gossip-k8s-local-k2q54l.id
@@ -602,6 +612,27 @@ resource "aws_lb_listener" "api-gossip-k8s-local-443" {
   load_balancer_arn = aws_lb.api-gossip-k8s-local.id
   port              = 443
   protocol          = "TCP"
+}
+
+resource "aws_lb_target_group" "kops-controller-gossip-k8-53agdi" {
+  connection_termination = "true"
+  deregistration_delay   = "30"
+  health_check {
+    healthy_threshold   = 2
+    interval            = 10
+    path                = "/healthz"
+    protocol            = "HTTPS"
+    unhealthy_threshold = 2
+  }
+  name     = "kops-controller-gossip-k8-53agdi"
+  port     = 3988
+  protocol = "TCP"
+  tags = {
+    "KubernetesCluster"                      = "gossip.k8s.local"
+    "Name"                                   = "kops-controller-gossip-k8-53agdi"
+    "kubernetes.io/cluster/gossip.k8s.local" = "owned"
+  }
+  vpc_id = aws_vpc.gossip-k8s-local.id
 }
 
 resource "aws_lb_target_group" "tcp-gossip-k8s-local-k2q54l" {
@@ -1050,6 +1081,24 @@ resource "aws_security_group_rule" "icmpv6-pmtu-api-elb-__--0" {
   security_group_id = aws_security_group.api-elb-gossip-k8s-local.id
   to_port           = -1
   type              = "ingress"
+}
+
+resource "aws_security_group_rule" "kops-controller-elb-to-cp" {
+  from_port                = 3988
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.masters-gossip-k8s-local.id
+  source_security_group_id = aws_security_group.api-elb-gossip-k8s-local.id
+  to_port                  = 3988
+  type                     = "ingress"
+}
+
+resource "aws_security_group_rule" "node-to-elb" {
+  from_port                = 0
+  protocol                 = "-1"
+  security_group_id        = aws_security_group.api-elb-gossip-k8s-local.id
+  source_security_group_id = aws_security_group.nodes-gossip-k8s-local.id
+  to_port                  = 0
+  type                     = "ingress"
 }
 
 resource "aws_sqs_queue" "gossip-k8s-local-nth" {

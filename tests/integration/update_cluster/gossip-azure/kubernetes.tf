@@ -378,6 +378,28 @@ resource "azurerm_network_security_group" "gossip-k8s-local" {
     source_port_range                          = "*"
   }
   security_rule {
+    access                                     = "Allow"
+    destination_application_security_group_ids = [azurerm_application_security_group.control-plane-gossip-k8s-local.id]
+    destination_port_range                     = "443"
+    direction                                  = "Inbound"
+    name                                       = "AllowNodesToKubernetesAPI"
+    priority                                   = 2000
+    protocol                                   = "Tcp"
+    source_address_prefix                      = "*"
+    source_port_range                          = "*"
+  }
+  security_rule {
+    access                                     = "Allow"
+    destination_application_security_group_ids = [azurerm_application_security_group.control-plane-gossip-k8s-local.id]
+    destination_port_range                     = "3988"
+    direction                                  = "Inbound"
+    name                                       = "AllowNodesToKopsController"
+    priority                                   = 2001
+    protocol                                   = "Tcp"
+    source_address_prefix                      = "*"
+    source_port_range                          = "*"
+  }
+  security_rule {
     access                     = "Allow"
     destination_address_prefix = "VirtualNetwork"
     destination_port_range     = "*"
