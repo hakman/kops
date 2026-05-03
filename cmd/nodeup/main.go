@@ -56,7 +56,7 @@ func main() {
 	flag.BoolVar(&dryrun, "dryrun", false, "Don't create cloud resources; just show what would be done")
 	flag.StringVar(&target, "target", target, "Target - direct, dryrun")
 	flag.BoolVar(&installSystemdUnit, "install-systemd-unit", installSystemdUnit, "If true, will install a systemd unit instead of running directly")
-	flag.BoolVar(&logMemory, "log-memory", false, "Log Go and cgroup memory statistics during nodeup")
+	flag.BoolVar(&logMemory, "log-memory", true, "Log Go and cgroup memory statistics during nodeup")
 
 	if dryrun {
 		target = "dryrun"
