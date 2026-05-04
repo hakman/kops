@@ -25,17 +25,15 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"helm.sh/helm/v3/pkg/strvals"
-	"k8s.io/kops/pkg/commands/commandutils"
 	"k8s.io/kubectl/pkg/util/i18n"
 	"k8s.io/kubectl/pkg/util/templates"
 	"sigs.k8s.io/yaml"
 
-	helmvalues "helm.sh/helm/v3/pkg/cli/values"
-
 	kopsapi "k8s.io/kops/pkg/apis/kops"
+	"k8s.io/kops/pkg/commands/commandutils"
 	"k8s.io/kops/pkg/try"
 	"k8s.io/kops/pkg/util/templater"
+	"k8s.io/kops/third_party/forked/helmstrvals"
 	"k8s.io/kops/upup/pkg/fi/utils"
 )
 
@@ -250,30 +248,20 @@ func newTemplateContext(files []string, values []string, stringValues []string) 
 			if err := utils.YamlUnmarshal(content, &ctx); err != nil {
 				return nil, fmt.Errorf("unable decode the configuration file: %s, error: %v", j, err)
 			}
-
-			valueOpts := &helmvalues.Options{
-				Values:       values,
-				ValueFiles:   files,
-				StringValues: stringValues,
-			}
-
-			context, err = valueOpts.MergeValues(nil)
-			if err != nil {
-				return nil, err
-			}
+			context = mergeMaps(context, ctx)
 		}
 	}
 
 	// User specified a value via --set
 	for _, value := range values {
-		if err := strvals.ParseInto(value, context); err != nil {
+		if err := helmstrvals.ParseInto(value, context); err != nil {
 			return nil, fmt.Errorf("failed parsing --set data: %s", err)
 		}
 	}
 
 	// User specified a value via --set-string
 	for _, value := range stringValues {
-		if err := strvals.ParseIntoString(value, context); err != nil {
+		if err := helmstrvals.ParseIntoString(value, context); err != nil {
 			return nil, fmt.Errorf("failed parsing --set-string data: %s", err)
 		}
 	}
@@ -306,4 +294,23 @@ func expandFiles(path string) ([]string, error) {
 	}
 
 	return list, nil
+}
+
+// mergeMaps deep-merges src into dst, returning the result. Nested maps are
+// recursively merged; other values from src overwrite dst.
+func mergeMaps(dst, src map[string]interface{}) map[string]interface{} {
+	out := make(map[string]interface{}, len(dst))
+	for k, v := range dst {
+		out[k] = v
+	}
+	for k, v := range src {
+		if vmap, ok := v.(map[string]interface{}); ok {
+			if existing, ok := out[k].(map[string]interface{}); ok {
+				out[k] = mergeMaps(existing, vmap)
+				continue
+			}
+		}
+		out[k] = v
+	}
+	return out
 }
