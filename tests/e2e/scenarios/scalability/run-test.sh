@@ -191,6 +191,10 @@ fi
 # this is used as a label to select kube-proxy pods on kops for kube-proxy service
 # used by CL2 Prometheus here https://github.com/kubernetes/perf-tests/blob/master/clusterloader2/pkg/prometheus/manifests/default/kube-proxy-service.yaml#L2
 export PROMETHEUS_KUBE_PROXY_SELECTOR_KEY="k8s-app"
+# kops exposes etcd on 4001/4002 (TLS) and binds the metrics URL to localhost,
+# so the CL2 master ServiceMonitor cannot scrape etcd directly. Restrict the
+# master scrape pool to the apiserver, matching the AWS provider's default.
+export PROMETHEUS_SCRAPE_APISERVER_ONLY="true"
 export ETCD_PORT="4001" # we want cl2 to use this port for etcd instead of 2379
 if [[ "${CLOUD_PROVIDER}" == "aws" && "${SCALE_SCENARIO}" == "performance" ]]; then
   # CL2 uses KUBE_SSH_KEY_PATH path to ssh to instances for scraping metrics
