@@ -34,6 +34,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
@@ -48,6 +49,7 @@ import (
 	"k8s.io/kops/pkg/client/simple"
 	"k8s.io/kops/pkg/commands/commandutils"
 	"k8s.io/kops/pkg/featureflag"
+	"k8s.io/kops/pkg/k8scodecs"
 	"k8s.io/kops/pkg/kubeconfig"
 	"k8s.io/kops/pkg/model"
 	"k8s.io/kops/pkg/model/resources"
@@ -920,8 +922,8 @@ func (b *ConfigBuilder) GetBootstrapData(ctx context.Context) (*BootstrapData, e
 		if err != nil {
 			return nil, fmt.Errorf("parsing configStore.base %q: %w", cluster.Spec.ConfigStore.Base, err)
 		}
+		bootstrapChannelPath := configBase.Join("addons", "bootstrap-channel.yaml").Path()
 		for i, channel := range nodeupConfig.Channels {
-			bootstrapChannelPath := configBase.Join("addons", "bootstrap-channel.yaml").Path()
 			if channel != bootstrapChannelPath {
 				klog.Infof("not remapping non-bootstrap channel %q", channel)
 				continue
@@ -937,6 +939,26 @@ func (b *ConfigBuilder) GetBootstrapData(ctx context.Context) (*BootstrapData, e
 			if strings.HasPrefix(nodeupConfig.Channels[i], "/") {
 				nodeupConfig.Channels[i] = "file://" + nodeupConfig.Channels[i]
 			}
+		}
+
+		// The channels static pod manifest is built at cloudup with the remote
+		// bootstrap URL baked into its args. Pull it down like the etcd ones,
+		// then rewrite that URL to the file:// path the Channels[] loop above
+		// copied.
+		if strings.HasPrefix(nodeupConfig.ChannelsManifest, remapPrefix) {
+			if err := remapFile(&nodeupConfig.ChannelsManifest, targetDir); err != nil {
+				return nil, err
+			}
+			localAddons := path.Join(targetDir, "addons")
+			rewritten, err := rewriteChannelsManifestForEnroll(
+				bootstrapData.NodeupScriptAdditionalFiles[nodeupConfig.ChannelsManifest],
+				bootstrapChannelPath,
+				localAddons,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("rewriting channels manifest: %w", err)
+			}
+			bootstrapData.NodeupScriptAdditionalFiles[nodeupConfig.ChannelsManifest] = rewritten
 		}
 
 		if nodeupConfig.ConfigStore != nil {
@@ -979,4 +1001,33 @@ func (b *ConfigBuilder) GetBootstrapData(ctx context.Context) (*BootstrapData, e
 	b.bootstrapData = bootstrapData
 
 	return bootstrapData, nil
+}
+
+// rewriteChannelsManifestForEnroll rewrites the bootstrap-channel URL inside
+// the kops-channels pod's container args so the channels binary can read it
+// from the local addons tree copied onto the enrolled node. Other channels
+// (custom addons) pass through unchanged, matching the pre-existing
+// Channels[] rewrite behavior above. If no arg matches the bootstrap URL we
+// log it — that almost certainly means the cloudup-built manifest shape
+// drifted and the enrolled node will fail to reach the bootstrap channel.
+func rewriteChannelsManifestForEnroll(data []byte, bootstrapChannelURL string, localAddonsDir string) ([]byte, error) {
+	pod := &corev1.Pod{}
+	if err := yaml.Unmarshal(data, pod); err != nil {
+		return nil, fmt.Errorf("parsing kops-channels manifest: %w", err)
+	}
+	localBootstrap := "file://" + path.Join(localAddonsDir, "bootstrap-channel.yaml")
+	rewrote := false
+	for ci := range pod.Spec.Containers {
+		args := pod.Spec.Containers[ci].Args
+		for i, arg := range args {
+			if arg == bootstrapChannelURL {
+				args[i] = localBootstrap
+				rewrote = true
+			}
+		}
+	}
+	if !rewrote {
+		klog.Warningf("kops-channels manifest had no arg matching the bootstrap URL %q; enrolled node will not be able to reach the bootstrap channel", bootstrapChannelURL)
+	}
+	return k8scodecs.ToVersionedYaml(pod)
 }
