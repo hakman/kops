@@ -297,6 +297,7 @@ Networking:
 UpdatePolicy: automatic
 channels:
 - memfs://tests/gossip.k8s.local/addons/bootstrap-channel.yaml
+channelsManifest: memfs://tests/gossip.k8s.local/manifests/channels/kops-channels.yaml
 configStore:
   keypairs: memfs://tests/gossip.k8s.local/pki
   secrets: memfs://tests/gossip.k8s.local/secrets

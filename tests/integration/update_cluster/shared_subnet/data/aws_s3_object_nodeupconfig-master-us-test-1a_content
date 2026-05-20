@@ -304,6 +304,7 @@ Networking:
 UpdatePolicy: automatic
 channels:
 - memfs://clusters.example.com/sharedsubnet.example.com/addons/bootstrap-channel.yaml
+channelsManifest: memfs://clusters.example.com/sharedsubnet.example.com/manifests/channels/kops-channels.yaml
 configStore:
   keypairs: memfs://clusters.example.com/sharedsubnet.example.com/pki
   secrets: memfs://clusters.example.com/sharedsubnet.example.com/secrets

@@ -303,6 +303,7 @@ Networking:
 UpdatePolicy: automatic
 channels:
 - memfs://clusters.example.com/minimal.k8s.local/addons/bootstrap-channel.yaml
+channelsManifest: memfs://clusters.example.com/minimal.k8s.local/manifests/channels/kops-channels.yaml
 configStore:
   keypairs: memfs://clusters.example.com/minimal.k8s.local/pki
   secrets: memfs://clusters.example.com/minimal.k8s.local/secrets

@@ -125,7 +125,7 @@ ClusterName: minimal-gce-plb-apiserver.example.com
 ConfigBase: memfs://tests/minimal-gce-plb-apiserver.example.com
 InstanceGroupName: master-us-test1-a
 InstanceGroupRole: ControlPlane
-NodeupConfigHash: KQcULhLZiJEgXHZmoxmTIOHGvtsjD3KujlL4iCuvZuQ=
+NodeupConfigHash: keMIrG2u4io2H2Xpx1dS0zyFCZJ652xJ7EiX0UdwCaI=
 
 __EOF_KUBE_ENV
 

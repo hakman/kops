@@ -299,6 +299,7 @@ Networking:
 UpdatePolicy: automatic
 channels:
 - memfs://tests/minimal.example.com/addons/bootstrap-channel.yaml
+channelsManifest: memfs://tests/minimal.example.com/manifests/channels/kops-channels.yaml
 configStore:
   keypairs: memfs://tests/minimal.example.com/pki
   secrets: memfs://tests/minimal.example.com/secrets
