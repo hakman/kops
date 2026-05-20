@@ -52,6 +52,9 @@ type Config struct {
 	EtcdClusterNames []string `json:",omitempty"`
 	// EtcdManifests are the manifests for running etcd.
 	EtcdManifests []string `json:"etcdManifests,omitempty"`
+	// ChannelsManifest is the state-store path of the kops-channels static pod
+	// manifest, set on control-plane instance groups.
+	ChannelsManifest string `json:"channelsManifest,omitempty"`
 
 	// CAs are the CA certificates to trust.
 	CAs map[string]string

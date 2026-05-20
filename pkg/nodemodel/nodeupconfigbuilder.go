@@ -32,6 +32,7 @@ import (
 	"k8s.io/kops/pkg/apis/nodeup"
 	"k8s.io/kops/pkg/assets"
 	"k8s.io/kops/pkg/model"
+	channelscomponent "k8s.io/kops/pkg/model/components/channels"
 	"k8s.io/kops/pkg/nodemodel/wellknownassets"
 	"k8s.io/kops/pkg/wellknownports"
 	"k8s.io/kops/pkg/wellknownservices"
@@ -43,6 +44,7 @@ import (
 type nodeUpConfigBuilder struct {
 	assetBuilder               *assets.AssetBuilder
 	channels                   []string
+	channelsManifest           string
 	configBase                 vfs.Path
 	cluster                    *kops.Cluster
 	etcdManifests              map[string][]string
@@ -65,6 +67,8 @@ func NewNodeUpConfigBuilder(cluster *kops.Cluster, assetBuilder *assets.AssetBui
 	for i := range cluster.Spec.Addons {
 		channels = append(channels, cluster.Spec.Addons[i].Manifest)
 	}
+
+	channelsManifest := configBase.Join(channelscomponent.ManifestLocation).Path()
 
 	etcdManifests := map[string][]string{}
 	images := map[kops.InstanceGroupRole]map[architectures.Architecture][]*nodeup.Image{}
@@ -188,6 +192,7 @@ func NewNodeUpConfigBuilder(cluster *kops.Cluster, assetBuilder *assets.AssetBui
 	configBuilder := nodeUpConfigBuilder{
 		assetBuilder:               assetBuilder,
 		channels:                   channels,
+		channelsManifest:           channelsManifest,
 		configBase:                 configBase,
 		cluster:                    cluster,
 		etcdManifests:              etcdManifests,
@@ -443,6 +448,7 @@ func (n *nodeUpConfigBuilder) BuildConfig(ig *kops.InstanceGroup, wellKnownAddre
 			config.EtcdClusterNames = append(config.EtcdClusterNames, etcdCluster.Name)
 		}
 		config.EtcdManifests = n.etcdManifests[ig.Name]
+		config.ChannelsManifest = n.channelsManifest
 	}
 
 	if cluster.Spec.CloudProvider.AWS != nil {
