@@ -143,7 +143,7 @@ func BuildFlagsList(options interface{}) ([]string, error) {
 		case string:
 			vString := fmt.Sprintf("%v", v)
 			if vString != "" && vString != flagEmpty {
-				flag = fmt.Sprintf("--%s=%s", flagName, maybeQuote(vString))
+				flag = fmt.Sprintf("--%s=%s", flagName, vString)
 			}
 
 		case *string:
@@ -152,10 +152,10 @@ func BuildFlagsList(options interface{}) ([]string, error) {
 				// just like the string case above.
 				vString := fmt.Sprintf("%v", *v)
 				if flagIncludeEmpty {
-					flag = fmt.Sprintf("--%s=%s", flagName, maybeQuote(vString))
+					flag = fmt.Sprintf("--%s=%s", flagName, vString)
 				} else {
 					if vString != "" && vString != flagEmpty {
-						flag = fmt.Sprintf("--%s=%s", flagName, maybeQuote(vString))
+						flag = fmt.Sprintf("--%s=%s", flagName, vString)
 					}
 				}
 			}
@@ -212,11 +212,4 @@ func BuildFlagsList(options interface{}) ([]string, error) {
 	sort.Strings(flags)
 
 	return flags, nil
-}
-
-func maybeQuote(s string) string {
-	if strings.Contains(s, "\"") {
-		return fmt.Sprintf("%q", s)
-	}
-	return s
 }

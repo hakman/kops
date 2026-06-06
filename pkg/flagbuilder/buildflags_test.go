@@ -17,6 +17,7 @@ limitations under the License.
 package flagbuilder
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
@@ -207,6 +208,40 @@ func TestBuildAPIServerFlags(t *testing.T) {
 		}
 
 		if actual != test.Expected {
+			t.Errorf("unexpected flags.  actual=%q expected=%q", actual, test.Expected)
+			continue
+		}
+	}
+}
+
+func TestBuildFlagsListStaticConfigVerbatim(t *testing.T) {
+	type options struct {
+		StaticConfig string `flag:"static-config"`
+	}
+
+	grid := []struct {
+		Config   interface{}
+		Expected []string
+	}{
+		// A flag value containing double quotes (etcd-manager's --static-config JSON)
+		// must be passed verbatim on the container argv path - no surrounding quotes,
+		// no \" escaping.
+		{
+			Config: &options{
+				StaticConfig: `{"etcdVersion":"3.6.12"}`,
+			},
+			Expected: []string{`--static-config={"etcdVersion":"3.6.12"}`},
+		},
+	}
+
+	for _, test := range grid {
+		actual, err := BuildFlagsList(test.Config)
+		if err != nil {
+			t.Errorf("error from BuildFlagsList: %v", err)
+			continue
+		}
+
+		if !reflect.DeepEqual(actual, test.Expected) {
 			t.Errorf("unexpected flags.  actual=%q expected=%q", actual, test.Expected)
 			continue
 		}
