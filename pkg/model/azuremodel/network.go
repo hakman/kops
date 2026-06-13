@@ -47,6 +47,19 @@ func (b *NetworkModelBuilder) Build(c *fi.CloudupModelBuilderContext) error {
 	}
 	c.AddTask(networkTask)
 
+	// ngwPipTask is the NAT gateway's public IP, the cluster's egress address. It is used by the NAT gateway below
+	// and by the NSG rules that let nodes reach the API and kops-controller through the public load balancer.
+	ngwPipTask := &azuretasks.PublicIPAddress{
+		Name:             fi.PtrTo(b.NameForVirtualNetwork()),
+		Lifecycle:        b.Lifecycle,
+		ResourceGroup:    b.LinkToResourceGroup(),
+		IPVersion:        network.IPVersionIPv4,
+		AllocationMethod: network.IPAllocationMethodStatic,
+		SKU:              network.PublicIPAddressSKUNameStandard,
+		Tags:             map[string]*string{},
+	}
+	c.AddTask(ngwPipTask)
+
 	nsgTask := &azuretasks.NetworkSecurityGroup{
 		Name:          fi.PtrTo(b.Cluster.AzureNetworkSecurityGroupName()),
 		Lifecycle:     b.Lifecycle,
@@ -237,14 +250,18 @@ func (b *NetworkModelBuilder) Build(c *fi.CloudupModelBuilderContext) error {
 		DestinationPortRange:                     fi.PtrTo("*"),
 	})
 	if b.Cluster.UsesLoadBalancerForKopsController() && b.Cluster.Spec.API.LoadBalancer != nil && b.Cluster.Spec.API.LoadBalancer.Type == kops.LoadBalancerTypePublic {
-		// TODO: Limit access to necessary source address prefixes instead of "0.0.0.0/0" and "::/0"
+		// Nodes reach the API server and kops-controller through the public load balancer, egressing via the NAT
+		// gateway, so traffic arrives at the NSG sourced from the NAT gateway's public IP, not the Nodes ASG. Scope
+		// these rules to that egress IP plus the operator's API access CIDRs (for the API server), not the whole
+		// internet. IPv6 API access is already covered by AllowKubernetesAPI_v6, and the egress IP is IPv4.
 		nsgTask.SecurityRules = append(nsgTask.SecurityRules, &azuretasks.NetworkSecurityRule{
 			Name:                                     fi.PtrTo("AllowNodesToKubernetesAPI"),
 			Priority:                                 fi.PtrTo[int32](2000),
 			Access:                                   network.SecurityRuleAccessAllow,
 			Direction:                                network.SecurityRuleDirectionInbound,
 			Protocol:                                 network.SecurityRuleProtocolTCP,
-			SourceAddressPrefix:                      fi.PtrTo("*"),
+			SourceAddressPrefixes:                    k8sAccessIPv4,
+			SourcePublicIPAddresses:                  []*azuretasks.PublicIPAddress{ngwPipTask},
 			SourcePortRange:                          fi.PtrTo("*"),
 			DestinationApplicationSecurityGroupNames: []*string{fi.PtrTo(b.NameForApplicationSecurityGroupControlPlane())},
 			DestinationPortRange:                     fi.PtrTo(strconv.Itoa(wellknownports.KubeAPIServer)),
@@ -255,7 +272,7 @@ func (b *NetworkModelBuilder) Build(c *fi.CloudupModelBuilderContext) error {
 			Access:                                   network.SecurityRuleAccessAllow,
 			Direction:                                network.SecurityRuleDirectionInbound,
 			Protocol:                                 network.SecurityRuleProtocolTCP,
-			SourceAddressPrefix:                      fi.PtrTo("*"),
+			SourcePublicIPAddresses:                  []*azuretasks.PublicIPAddress{ngwPipTask},
 			SourcePortRange:                          fi.PtrTo("*"),
 			DestinationApplicationSecurityGroupNames: []*string{fi.PtrTo(b.NameForApplicationSecurityGroupControlPlane())},
 			DestinationPortRange:                     fi.PtrTo(strconv.Itoa(wellknownports.KopsControllerPort)),
@@ -296,16 +313,6 @@ func (b *NetworkModelBuilder) Build(c *fi.CloudupModelBuilderContext) error {
 	})
 	c.AddTask(nsgTask)
 
-	ngwPipTask := &azuretasks.PublicIPAddress{
-		Name:             fi.PtrTo(b.NameForVirtualNetwork()),
-		Lifecycle:        b.Lifecycle,
-		ResourceGroup:    b.LinkToResourceGroup(),
-		IPVersion:        network.IPVersionIPv4,
-		AllocationMethod: network.IPAllocationMethodStatic,
-		SKU:              network.PublicIPAddressSKUNameStandard,
-		Tags:             map[string]*string{},
-	}
-	c.AddTask(ngwPipTask)
 	ngwTask := &azuretasks.NatGateway{
 		Name:              fi.PtrTo(b.NameForVirtualNetwork()),
 		Lifecycle:         b.Lifecycle,

@@ -29,7 +29,7 @@ type terraformAzureNetworkSecurityRule struct {
 	Direction                              *string                    `cty:"direction"`
 	Protocol                               *string                    `cty:"protocol"`
 	SourceAddressPrefix                    *string                    `cty:"source_address_prefix"`
-	SourceAddressPrefixes                  []string                   `cty:"source_address_prefixes"`
+	SourceAddressPrefixes                  []*terraformWriter.Literal `cty:"source_address_prefixes"`
 	SourceApplicationSecurityGroupIDs      []*terraformWriter.Literal `cty:"source_application_security_group_ids"`
 	SourcePortRange                        *string                    `cty:"source_port_range"`
 	DestinationAddressPrefix               *string                    `cty:"destination_address_prefix"`
@@ -69,6 +69,15 @@ func (rule *NetworkSecurityRule) toTerraform() *terraformAzureNetworkSecurityRul
 	access := string(rule.Access)
 	direction := string(rule.Direction)
 	protocol := string(rule.Protocol)
+	var sourceAddressPrefixes []*terraformWriter.Literal
+	for _, prefix := range rule.SourceAddressPrefixes {
+		if prefix != nil {
+			sourceAddressPrefixes = append(sourceAddressPrefixes, terraformWriter.LiteralFromStringValue(*prefix))
+		}
+	}
+	for _, pip := range rule.SourcePublicIPAddresses {
+		sourceAddressPrefixes = append(sourceAddressPrefixes, pip.terraformIPAddress())
+	}
 	return &terraformAzureNetworkSecurityRule{
 		Name:                                   rule.Name,
 		Priority:                               rule.Priority,
@@ -76,7 +85,7 @@ func (rule *NetworkSecurityRule) toTerraform() *terraformAzureNetworkSecurityRul
 		Direction:                              &direction,
 		Protocol:                               &protocol,
 		SourceAddressPrefix:                    rule.SourceAddressPrefix,
-		SourceAddressPrefixes:                  stringSlice(rule.SourceAddressPrefixes),
+		SourceAddressPrefixes:                  sourceAddressPrefixes,
 		SourceApplicationSecurityGroupIDs:      applicationSecurityGroupNameIDs(rule.SourceApplicationSecurityGroupNames),
 		SourcePortRange:                        rule.SourcePortRange,
 		DestinationAddressPrefix:               rule.DestinationAddressPrefix,

@@ -35,6 +35,10 @@ type PublicIPAddress struct {
 	ID            *string
 	ResourceGroup *ResourceGroup
 
+	// IPAddress is the allocated IP address, populated by Find and RenderAzure rather than set by callers, so that
+	// dependent tasks (such as network security rules) can reference it once Azure has allocated it.
+	IPAddress *string
+
 	// IPVersion is the IP version, e.g. network.IPVersionIPv4.
 	IPVersion network.IPVersion
 	// AllocationMethod is the allocation method, e.g. network.IPAllocationMethodStatic.
@@ -92,6 +96,9 @@ func (p *PublicIPAddress) Find(c *fi.CloudupContext) (*PublicIPAddress, error) {
 	if found.Properties != nil {
 		actual.IPVersion = fi.ValueOf(found.Properties.PublicIPAddressVersion)
 		actual.AllocationMethod = fi.ValueOf(found.Properties.PublicIPAllocationMethod)
+		actual.IPAddress = found.Properties.IPAddress
+		// Also expose it on the expected task so dependent tasks can reference it even when the public IP is unchanged.
+		p.IPAddress = found.Properties.IPAddress
 	}
 	if found.SKU != nil {
 		actual.SKU = fi.ValueOf(found.SKU.Name)
@@ -157,6 +164,9 @@ func (*PublicIPAddress) RenderAzure(t *azure.AzureAPITarget, a, e, changes *Publ
 	}
 
 	e.ID = pip.ID
+	if pip.Properties != nil {
+		e.IPAddress = pip.Properties.IPAddress
+	}
 
 	return nil
 }

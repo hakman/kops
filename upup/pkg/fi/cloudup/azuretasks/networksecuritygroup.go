@@ -132,6 +132,38 @@ func (nsg *NetworkSecurityGroup) Find(c *fi.CloudupContext) (*NetworkSecurityGro
 		actual.SecurityRules = append(actual.SecurityRules, nsr)
 	}
 
+	// Rules can reference cluster-managed public IPs (e.g. the NAT gateway egress IP) whose addresses are only known
+	// once allocated. They render into SourceAddressPrefixes at apply time but are tracked via SourcePublicIPAddresses
+	// here, so copy that reference onto the actual rule and drop the resolved addresses to keep the two comparable.
+	expectedRules := make(map[string]*NetworkSecurityRule, len(nsg.SecurityRules))
+	for _, rule := range nsg.SecurityRules {
+		if rule.Name != nil {
+			expectedRules[*rule.Name] = rule
+		}
+	}
+	for _, actualRule := range actual.SecurityRules {
+		if actualRule.Name == nil {
+			continue
+		}
+		expectedRule := expectedRules[*actualRule.Name]
+		if expectedRule == nil || len(expectedRule.SourcePublicIPAddresses) == 0 {
+			continue
+		}
+		actualRule.SourcePublicIPAddresses = expectedRule.SourcePublicIPAddresses
+		resolved := make(map[string]bool)
+		for _, addr := range expectedRule.resolvedSourcePublicIPAddresses() {
+			resolved[*addr] = true
+		}
+		var prefixes []*string
+		for _, prefix := range actualRule.SourceAddressPrefixes {
+			if prefix != nil && resolved[*prefix] {
+				continue
+			}
+			prefixes = append(prefixes, prefix)
+		}
+		actualRule.SourceAddressPrefixes = prefixes
+	}
+
 	nsg.ID = found.ID
 
 	return actual, nil
@@ -181,6 +213,12 @@ func (*NetworkSecurityGroup) RenderAzure(t *azure.AzureAPITarget, a, e, changes 
 		Tags:     e.Tags,
 	}
 	for _, nsr := range e.SecurityRules {
+		// Resolve referenced public IP addresses (e.g. the NAT gateway egress IP) into the rule's source prefixes,
+		// copying the slice only when there is something to add so other rules keep their prefixes untouched.
+		sourceAddressPrefixes := nsr.SourceAddressPrefixes
+		if extra := nsr.resolvedSourcePublicIPAddresses(); len(extra) > 0 {
+			sourceAddressPrefixes = append(append([]*string(nil), nsr.SourceAddressPrefixes...), extra...)
+		}
 		securityRule := network.SecurityRule{
 			Name: nsr.Name,
 			Properties: &network.SecurityRulePropertiesFormat{
@@ -189,7 +227,7 @@ func (*NetworkSecurityGroup) RenderAzure(t *azure.AzureAPITarget, a, e, changes 
 				Direction:                  &nsr.Direction,
 				Protocol:                   &nsr.Protocol,
 				SourceAddressPrefix:        nsr.SourceAddressPrefix,
-				SourceAddressPrefixes:      nsr.SourceAddressPrefixes,
+				SourceAddressPrefixes:      sourceAddressPrefixes,
 				SourcePortRange:            nsr.SourcePortRange,
 				DestinationAddressPrefix:   nsr.DestinationAddressPrefix,
 				DestinationAddressPrefixes: nsr.DestinationAddressPrefixes,
@@ -241,13 +279,18 @@ func (*NetworkSecurityGroup) RenderAzure(t *azure.AzureAPITarget, a, e, changes 
 
 // NetworkSecurityRule represents a NetworkSecurityGroup rule.
 type NetworkSecurityRule struct {
-	Name                                     *string
-	Priority                                 *int32
-	Access                                   network.SecurityRuleAccess
-	Direction                                network.SecurityRuleDirection
-	Protocol                                 network.SecurityRuleProtocol
-	SourceAddressPrefix                      *string
-	SourceAddressPrefixes                    []*string
+	Name                  *string
+	Priority              *int32
+	Access                network.SecurityRuleAccess
+	Direction             network.SecurityRuleDirection
+	Protocol              network.SecurityRuleProtocol
+	SourceAddressPrefix   *string
+	SourceAddressPrefixes []*string
+	// SourcePublicIPAddresses are public IP tasks whose allocated addresses are added to the rule's source prefixes.
+	// This scopes a rule to cluster-managed egress IPs (e.g. the NAT gateway IP that node traffic is SNATed to when
+	// reaching the API through a public load balancer) without opening it to the internet. The addresses are known
+	// only once Azure allocates them, so they are resolved at render time rather than here.
+	SourcePublicIPAddresses                  []*PublicIPAddress
 	SourceApplicationSecurityGroupNames      []*string
 	SourcePortRange                          *string
 	DestinationAddressPrefixes               []*string
@@ -259,5 +302,21 @@ type NetworkSecurityRule struct {
 var _ fi.CloudupHasDependencies = (*NetworkSecurityRule)(nil)
 
 func (e *NetworkSecurityRule) GetDependencies(tasks map[string]fi.CloudupTask) []fi.CloudupTask {
-	return nil
+	var deps []fi.CloudupTask
+	for _, pip := range e.SourcePublicIPAddresses {
+		deps = append(deps, pip)
+	}
+	return deps
+}
+
+// resolvedSourcePublicIPAddresses returns the allocated addresses of the rule's source public IPs, skipping any not
+// yet allocated by Azure.
+func (e *NetworkSecurityRule) resolvedSourcePublicIPAddresses() []*string {
+	var addrs []*string
+	for _, pip := range e.SourcePublicIPAddresses {
+		if pip.IPAddress != nil {
+			addrs = append(addrs, pip.IPAddress)
+		}
+	}
+	return addrs
 }
