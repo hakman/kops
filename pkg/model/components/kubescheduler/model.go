@@ -29,16 +29,17 @@ import (
 	"k8s.io/kops/pkg/assets"
 	"k8s.io/kops/pkg/kubemanifest"
 	"k8s.io/kops/pkg/model"
+	"k8s.io/kops/pkg/wellknownpaths"
 	"k8s.io/kops/upup/pkg/fi"
 	"k8s.io/kops/util/pkg/reflectutils"
 	"sigs.k8s.io/yaml"
 )
 
 // KubeSchedulerConfigPath is the path where we write the kube-scheduler config file (on the control-plane nodes)
-const KubeSchedulerConfigPath = "/var/lib/kube-scheduler/config.yaml"
+const KubeSchedulerConfigPath = wellknownpaths.KubeSchedulerConfig
 
-// Kubeconfig is the path where we write the kube-scheduler kubeconfig file (on the control-plane nodes)
-const KubeConfigPath = "/var/lib/kube-scheduler/kubeconfig"
+// KubeConfigPath is the path where we write the kube-scheduler kubeconfig file (on the control-plane nodes)
+const KubeConfigPath = wellknownpaths.KubeSchedulerKubeConfig
 
 // KubeSchedulerBuilder builds the configuration file for kube-scheduler
 type KubeSchedulerBuilder struct {
