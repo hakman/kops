@@ -17,14 +17,17 @@ limitations under the License.
 package nodetasks
 
 import (
+	"bytes"
 	"context"
+	"crypto/tls"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"path"
+	"strings"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 
 	discoveryapi "k8s.io/kops/discovery/apis/discovery.kops.k8s.io/v1alpha1"
@@ -120,18 +123,43 @@ func (_ *DiscoveryServiceRegisterTask) RenderLocal(t *local.LocalTarget, a, e, c
 	clientCertBundle = append(clientCertBundle, clientCert...)
 	clientCertBundle = append(clientCertBundle, clientCA...)
 
-	config := &rest.Config{
-		Host: e.DiscoveryService,
-		TLSClientConfig: rest.TLSClientConfig{
-			CertData: clientCertBundle,
-			KeyData:  clientKey,
-		},
-	}
-	kubeClient, err := dynamic.NewForConfig(config)
+	httpClient, err := buildDiscoveryHTTPClient(clientCertBundle, clientKey)
 	if err != nil {
-		return fmt.Errorf("error creating dynamic client: %w", err)
+		return err
 	}
 
+	result, err := e.register(ctx, httpClient)
+	if err != nil {
+		return err
+	}
+	log.Info("registered with discovery service", "result", *result)
+
+	return nil
+}
+
+// buildDiscoveryHTTPClient builds an HTTP client that presents the given
+// client certificate bundle; the server certificate is verified against the
+// system roots.
+func buildDiscoveryHTTPClient(clientCertBundle, clientKey []byte) (*http.Client, error) {
+	clientCertificate, err := tls.X509KeyPair(clientCertBundle, clientKey)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing client certificate: %w", err)
+	}
+
+	transport := &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		TLSClientConfig: &tls.Config{
+			Certificates: []tls.Certificate{clientCertificate},
+		},
+	}
+	return &http.Client{Transport: transport}, nil
+}
+
+// register sends our DiscoveryEndpoint to the discovery service, with a
+// server-side-apply PATCH request matching the one sent by the client-go
+// dynamic client.  We build the request by hand so that nodeup does not need
+// to link the dynamic client and the serializer machinery it drags in.
+func (e *DiscoveryServiceRegisterTask) register(ctx context.Context, httpClient *http.Client) (*discoveryapi.DiscoveryEndpoint, error) {
 	spec := discoveryapi.DiscoveryEndpointSpec{}
 
 	spec.OIDC = &discoveryapi.OIDCSpec{}
@@ -150,25 +178,50 @@ func (_ *DiscoveryServiceRegisterTask) RenderLocal(t *local.LocalTarget, a, e, c
 	ep.Name = e.RegisterName
 	ep.Namespace = e.RegisterNamespace
 
-	// Convert to Unstructured
-	obj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(ep)
+	body, err := json.Marshal(ep)
 	if err != nil {
-		return fmt.Errorf("failed to convert to unstructured: %w", err)
+		return nil, fmt.Errorf("failed to encode DiscoveryEndpoint: %w", err)
 	}
-	u := &unstructured.Unstructured{Object: obj}
-	gvr := discoveryapi.DiscoveryEndpointGVR
 
-	// Use Server-Side Apply to Create/Update
-	created, err := kubeClient.Resource(gvr).Namespace(u.GetNamespace()).Apply(ctx, u.GetName(), u, metav1.ApplyOptions{FieldManager: "nodeup-register"})
+	host := e.DiscoveryService
+	if !strings.Contains(host, "://") {
+		host = "https://" + host
+	}
+	u, err := url.Parse(host)
 	if err != nil {
-		return fmt.Errorf("failed to register with discovery service: %w", err)
+		return nil, fmt.Errorf("invalid discovery service %q: %w", e.DiscoveryService, err)
+	}
+	gvr := discoveryapi.DiscoveryEndpointGVR
+	u.Path = path.Join(u.Path, "apis", gvr.Group, gvr.Version, "namespaces", ep.Namespace, gvr.Resource, ep.Name)
+	query := u.Query()
+	query.Set("fieldManager", "nodeup-register")
+	query.Set("force", "false")
+	u.RawQuery = query.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, u.String(), bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to build registration request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/apply-patch+yaml")
+	req.Header.Set("Accept", "application/json")
+
+	response, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to register with discovery service: %w", err)
+	}
+	defer response.Body.Close()
+
+	responseBody, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read discovery service response: %w", err)
+	}
+	if response.StatusCode < 200 || response.StatusCode > 299 {
+		return nil, fmt.Errorf("failed to register with discovery service: unexpected response %q: %s", response.Status, strings.TrimSpace(string(responseBody)))
 	}
 
 	var result discoveryapi.DiscoveryEndpoint
-	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(created.Object, &result); err != nil {
-		return fmt.Errorf("failed to convert from unstructured: %w", err)
+	if err := json.Unmarshal(responseBody, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse discovery service response: %w", err)
 	}
-	log.Info("registered with discovery service", "result", result)
-
-	return nil
+	return &result, nil
 }
