@@ -30,9 +30,9 @@ import (
 	"k8s.io/kops/pkg/k8scodecs"
 	"k8s.io/kops/pkg/kubeconfig"
 	"k8s.io/kops/pkg/kubemanifest"
-	"k8s.io/kops/pkg/model/components"
 	"k8s.io/kops/pkg/tokens"
 	"k8s.io/kops/pkg/wellknownports"
+	"k8s.io/kops/pkg/wellknownservices"
 	"k8s.io/kops/pkg/wellknownusers"
 	"k8s.io/kops/upup/pkg/fi"
 	"k8s.io/kops/upup/pkg/fi/nodeup/nodetasks"
@@ -460,7 +460,7 @@ func (b *KubeAPIServerBuilder) writeServerCertificate(c *fi.NodeupModelBuilderCo
 
 		// Referencing it by internal IP should work also
 		{
-			ip, err := components.WellKnownServiceIP(&b.NodeupConfig.Networking, 1)
+			ip, err := wellknownservices.WellKnownServiceIP(&b.NodeupConfig.Networking, 1)
 			if err != nil {
 				return err
 			}

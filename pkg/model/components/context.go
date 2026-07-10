@@ -17,9 +17,7 @@ limitations under the License.
 package components
 
 import (
-	"encoding/binary"
 	"fmt"
-	"math/big"
 	"net"
 	"strings"
 
@@ -27,6 +25,7 @@ import (
 	kopsmodel "k8s.io/kops/pkg/apis/kops/model"
 	"k8s.io/kops/pkg/apis/kops/util"
 	"k8s.io/kops/pkg/assets"
+	"k8s.io/kops/pkg/wellknownservices"
 	"k8s.io/kops/upup/pkg/fi"
 	"k8s.io/kops/util/pkg/vfs"
 
@@ -102,35 +101,7 @@ func UsesCNI(networking *kops.NetworkingSpec) bool {
 }
 
 func WellKnownServiceIP(networkingSpec *kops.NetworkingSpec, id int) (net.IP, error) {
-	_, cidr, err := net.ParseCIDR(networkingSpec.ServiceClusterIPRange)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing ServiceClusterIPRange %q: %v", networkingSpec.ServiceClusterIPRange, err)
-	}
-
-	ip4 := cidr.IP.To4()
-	if ip4 != nil {
-		n := binary.BigEndian.Uint32(ip4)
-		n += uint32(id)
-		serviceIP := make(net.IP, len(ip4))
-		binary.BigEndian.PutUint32(serviceIP, n)
-		return serviceIP, nil
-	}
-
-	ip6 := cidr.IP.To16()
-	if ip6 != nil {
-		baseIPInt := big.NewInt(0)
-		baseIPInt.SetBytes(ip6)
-		serviceIPInt := big.NewInt(0)
-		serviceIPInt.Add(big.NewInt(int64(id)), baseIPInt)
-		serviceIP := make(net.IP, len(ip6))
-		serviceIPBytes := serviceIPInt.Bytes()
-		for i := range serviceIPBytes {
-			serviceIP[len(serviceIP)-len(serviceIPBytes)+i] = serviceIPBytes[i]
-		}
-		return serviceIP, nil
-	}
-
-	return nil, fmt.Errorf("unexpected IP address type for ServiceClusterIPRange: %s", networkingSpec.ServiceClusterIPRange)
+	return wellknownservices.WellKnownServiceIP(networkingSpec, id)
 }
 
 // Image returns the docker image name for the specified component
