@@ -56,8 +56,6 @@ type vfsContextState struct {
 
 	// swiftClient is the openstack swift client
 	swiftClient *gophercloud.ServiceClient
-
-	azureClients map[string]*azblob.Client
 }
 
 // Context holds the global VFS state.
@@ -581,6 +579,18 @@ func (c *VFSContext) buildAzureBlobPath(p string) (*AzureBlobPath, error) {
 	return NewAzureBlobPath(c, account, container, key), nil
 }
 
+// azureClients caches the azure blob storage clients by storage account.
+// It is deliberately a package-level variable rather than a field on
+// VFSContext: VFSContext is reachable from reflection metadata (via the
+// VFS path types), and an *azblob.Client field would drag the type
+// descriptors for the Azure Blob API surface into every binary that
+// links VFS, notably nodeup.  The clients are built purely from ambient
+// credentials, so all VFSContexts share the same clients.
+var (
+	azureClientsMutex sync.Mutex
+	azureClients      map[string]*azblob.Client
+)
+
 // getAzureBlobClient returns the client for azure blob storage for the given
 // storage account, caching it for future reuse.
 func (c *VFSContext) getAzureBlobClient(ctx context.Context, account string) (*azblob.Client, error) {
@@ -588,10 +598,10 @@ func (c *VFSContext) getAzureBlobClient(ctx context.Context, account string) (*a
 		return nil, fmt.Errorf("Azure storage account is required")
 	}
 
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
+	azureClientsMutex.Lock()
+	defer azureClientsMutex.Unlock()
 
-	if client, ok := c.azureClients[account]; ok {
+	if client, ok := azureClients[account]; ok {
 		return client, nil
 	}
 
@@ -599,10 +609,10 @@ func (c *VFSContext) getAzureBlobClient(ctx context.Context, account string) (*a
 	if err != nil {
 		return nil, err
 	}
-	if c.azureClients == nil {
-		c.azureClients = make(map[string]*azblob.Client)
+	if azureClients == nil {
+		azureClients = make(map[string]*azblob.Client)
 	}
-	c.azureClients[account] = client
+	azureClients[account] = client
 	return client, nil
 }
 
