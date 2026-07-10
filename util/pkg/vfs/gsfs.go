@@ -109,8 +109,14 @@ func (p *GSPath) Object() string {
 	return p.key
 }
 
-// Client returns the storage.Service bound to this path
-func (p *GSPath) Client(ctx context.Context) (*storage.Service, error) {
+// GSClient returns the storage.Service bound to the given path.
+// It is deliberately a free function rather than a method on GSPath:
+// GSPath's exported methods are retained in reflection metadata, and a
+// method returning *storage.Service would drag the type descriptors for
+// the whole GCS API surface into every binary that links VFS, notably
+// nodeup.  A free function is dead-code-eliminated from binaries that
+// never call it.
+func GSClient(ctx context.Context, p *GSPath) (*storage.Service, error) {
 	return p.getStorageClient(ctx)
 }
 
@@ -272,8 +278,12 @@ func (p *GSPath) ReadFile(ctx context.Context) ([]byte, error) {
 
 // WriteTo implements io.WriterTo::WriteTo
 func (p *GSPath) WriteTo(out io.Writer) (int64, error) {
-	ctx := context.TODO()
+	return p.WriteToWithContext(context.TODO(), out)
+}
 
+// WriteToWithContext writes the contents of the file to out,
+// canceling the transfer if ctx is canceled.
+func (p *GSPath) WriteToWithContext(ctx context.Context, out io.Writer) (int64, error) {
 	klog.V(4).Infof("Reading file %q", p)
 
 	client, err := p.getStorageClient(ctx)
@@ -423,7 +433,7 @@ func (p *GSPath) GetHTTPsUrl() (string, error) {
 }
 
 func (p *GSPath) IsBucketPublic(ctx context.Context) (bool, error) {
-	client, err := p.Client(ctx)
+	client, err := p.getStorageClient(ctx)
 	if err != nil {
 		return false, err
 	}

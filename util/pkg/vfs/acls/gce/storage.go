@@ -45,7 +45,7 @@ func (s *gcsAclStrategy) GetACL(ctx context.Context, p vfs.Path, cluster *kops.C
 	}
 
 	bucketName := gcsPath.Bucket()
-	client, err := gcsPath.Client(ctx)
+	client, err := vfs.GSClient(ctx, gcsPath)
 	if err != nil {
 		return nil, err
 	}

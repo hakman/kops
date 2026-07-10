@@ -25,12 +25,11 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
-	"cloud.google.com/go/storage"
 	"k8s.io/klog/v2"
 	"k8s.io/kops/util/pkg/hashing"
+	"k8s.io/kops/util/pkg/vfs"
 )
 
 const downloadTimeout = 3 * time.Minute
@@ -83,33 +82,11 @@ func downloadURLToFile(ctx context.Context, url string, destPath string, hash *h
 // downloadURLToWriter streams the file at the given url to dest.
 // If hash is non-nil, it will also verify that it matches the downloaded bytes.
 func downloadURLToWriter(ctx context.Context, desturl string, dest io.Writer, hash *hashing.Hash) (*hashing.Hash, error) {
-	var reader io.ReadCloser
 	u, err := url.Parse(desturl)
 	if err != nil {
 		return nil, fmt.Errorf("Invalud URL for file %q: %v", desturl, err)
 	}
-	if u.Scheme != "gs" {
-		reader, err = OpenURL(desturl)
-		if err != nil {
-			return nil, err
-		}
-		defer reader.Close()
-	} else {
-		bucketName := u.Host
-		objectName := strings.TrimPrefix(u.Path, "/")
 
-		client, err := storage.NewClient(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("Failed to create client %q: %v", desturl, err)
-		}
-		defer client.Close()
-
-		reader, err = client.Bucket(bucketName).Object(objectName).NewReader(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("Failed to open reader on object %q: %v", desturl, err)
-		}
-		defer reader.Close()
-	}
 	start := time.Now()
 	defer func() {
 		klog.V(2).Infof("Downloading %q took %q", desturl, time.Since(start))
@@ -123,8 +100,29 @@ func downloadURLToWriter(ctx context.Context, desturl string, dest io.Writer, ha
 	hasher := algorithm.NewHasher()
 	writer := io.MultiWriter(dest, hasher)
 
-	if _, err := io.Copy(writer, reader); err != nil {
-		return nil, fmt.Errorf("error downloading HTTP content from %q: %v", desturl, err)
+	if u.Scheme == "gs" {
+		// Reuse the VFS GCS implementation, so that we don't link two GCS clients.
+		vfsPath, err := vfs.Context.BuildVfsPath(desturl)
+		if err != nil {
+			return nil, fmt.Errorf("error building VFS path for %q: %v", desturl, err)
+		}
+		gsPath, ok := vfsPath.(*vfs.GSPath)
+		if !ok {
+			return nil, fmt.Errorf("unexpected VFS path type %T for %q", vfsPath, desturl)
+		}
+		if _, err := gsPath.WriteToWithContext(ctx, writer); err != nil {
+			return nil, fmt.Errorf("error downloading GCS object %q: %v", desturl, err)
+		}
+	} else {
+		reader, err := OpenURL(desturl)
+		if err != nil {
+			return nil, err
+		}
+		defer reader.Close()
+
+		if _, err := io.Copy(writer, reader); err != nil {
+			return nil, fmt.Errorf("error downloading HTTP content from %q: %v", desturl, err)
+		}
 	}
 
 	actual := &hashing.Hash{

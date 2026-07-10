@@ -54,9 +54,6 @@ type vfsContextState struct {
 	k8sContext   *KubernetesContext
 	memfsContext *MemFSContext
 
-	// The google cloud storage client, if initialized
-	cachedGCSClient *storage.Service
-
 	// swiftClient is the openstack swift client
 	swiftClient *gophercloud.ServiceClient
 
@@ -79,17 +76,6 @@ func NewTestingVFSContext() *VFSContext {
 	vfsContext := NewVFSContext()
 	vfsContext.ResetMemfsContext(true)
 	return vfsContext
-}
-
-func (v *VFSContext) WithGCSClient(gcsClient *storage.Service) *VFSContext {
-	v.mutex.Lock()
-	defer v.mutex.Unlock()
-
-	v2 := &VFSContext{
-		vfsContextState: v.vfsContextState,
-	}
-	v2.cachedGCSClient = gcsClient
-	return v2
 }
 
 type vfsOptions struct {
@@ -499,13 +485,25 @@ func (c *VFSContext) buildGCSPath(p string) (*GSPath, error) {
 	return gcsPath, nil
 }
 
+// cachedGCSClient caches the google cloud storage client.
+// It is deliberately a package-level variable rather than a field on
+// VFSContext: VFSContext is reachable from reflection metadata (via GSPath),
+// and a *storage.Service field would drag the type descriptors for the whole
+// GCS API surface into every binary that links VFS, notably nodeup.
+// The client is built purely from ambient credentials, so all VFSContexts
+// share the same client.
+var (
+	gcsClientMutex  sync.Mutex
+	cachedGCSClient *storage.Service
+)
+
 // getGCSClient returns the google storage.Service client, caching it for future calls
 func (c *VFSContext) getGCSClient(ctx context.Context) (*storage.Service, error) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
+	gcsClientMutex.Lock()
+	defer gcsClientMutex.Unlock()
 
-	if c.cachedGCSClient != nil {
-		return c.cachedGCSClient, nil
+	if cachedGCSClient != nil {
+		return cachedGCSClient, nil
 	}
 
 	// TODO: Should we fall back to read-only?
@@ -516,7 +514,7 @@ func (c *VFSContext) getGCSClient(ctx context.Context) (*storage.Service, error)
 		return nil, fmt.Errorf("error building GCS client: %v", err)
 	}
 
-	c.cachedGCSClient = gcsClient
+	cachedGCSClient = gcsClient
 	return gcsClient, nil
 }
 
