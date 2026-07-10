@@ -25,11 +25,8 @@ import (
 	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog/v2"
 	"k8s.io/kops/pkg/apis/kops"
-	"k8s.io/kops/pkg/apis/kops/v1alpha2"
-	"k8s.io/kops/pkg/kopscodecs"
 	"k8s.io/kops/pkg/sshcredentials"
 	"k8s.io/kops/util/pkg/vfs"
 	"k8s.io/kops/util/pkg/vfs/acls"
@@ -139,22 +136,6 @@ func writeKeysetBundle(ctx context.Context, cluster *kops.Cluster, p vfs.Path, n
 	return p.WriteFile(ctx, bytes.NewReader(objectData), acl)
 }
 
-// serializeKeysetBundle converts a Keyset bundle to yaml, for writing to VFS.
-func serializeKeysetBundle(o *kops.Keyset) ([]byte, error) {
-	var objectData bytes.Buffer
-	codecs := kopscodecs.Codecs
-	yaml, ok := runtime.SerializerInfoForMediaType(codecs.SupportedMediaTypes(), "application/yaml")
-	if !ok {
-		klog.Fatalf("no YAML serializer registered")
-	}
-	encoder := codecs.EncoderForVersion(yaml.Serializer, v1alpha2.SchemeGroupVersion)
-
-	if err := encoder.Encode(o, &objectData); err != nil {
-		return nil, fmt.Errorf("error serializing keyset: %v", err)
-	}
-	return objectData.Bytes(), nil
-}
-
 // ListKeysets implements CAStore::ListKeysets
 func (c *VFSCAStore) ListKeysets() (map[string]*Keyset, error) {
 	ctx := context.TODO()
@@ -206,7 +187,7 @@ func (c *VFSCAStore) MirrorTo(ctx context.Context, basedir vfs.Path) error {
 	}
 
 	for name, keyset := range keysets {
-		if err := mirrorKeyset(ctx, c.cluster, basedir, name, keyset); err != nil {
+		if err := MirrorKeyset(ctx, c.cluster, basedir, name, keyset); err != nil {
 			return err
 		}
 	}
@@ -217,7 +198,7 @@ func (c *VFSCAStore) MirrorTo(ctx context.Context, basedir vfs.Path) error {
 	}
 
 	for _, sshCredential := range sshCredentials {
-		if err := mirrorSSHCredential(ctx, c.cluster, basedir, sshCredential); err != nil {
+		if err := MirrorSSHCredential(ctx, c.cluster, basedir, sshCredential); err != nil {
 			return err
 		}
 	}
@@ -225,8 +206,8 @@ func (c *VFSCAStore) MirrorTo(ctx context.Context, basedir vfs.Path) error {
 	return nil
 }
 
-// mirrorKeyset writes Keyset bundles for the certificates & privatekeys.
-func mirrorKeyset(ctx context.Context, cluster *kops.Cluster, basedir vfs.Path, name string, keyset *Keyset) error {
+// MirrorKeyset writes Keyset bundles for the certificates & privatekeys.
+func MirrorKeyset(ctx context.Context, cluster *kops.Cluster, basedir vfs.Path, name string, keyset *Keyset) error {
 	if err := writeKeysetBundle(ctx, cluster, basedir.Join("private"), name, keyset); err != nil {
 		return fmt.Errorf("writing private bundle: %v", err)
 	}
@@ -234,8 +215,8 @@ func mirrorKeyset(ctx context.Context, cluster *kops.Cluster, basedir vfs.Path, 
 	return nil
 }
 
-// mirrorSSHCredential writes the SSH credential file to the mirror location
-func mirrorSSHCredential(ctx context.Context, cluster *kops.Cluster, basedir vfs.Path, sshCredential *kops.SSHCredential) error {
+// MirrorSSHCredential writes the SSH credential file to the mirror location
+func MirrorSSHCredential(ctx context.Context, cluster *kops.Cluster, basedir vfs.Path, sshCredential *kops.SSHCredential) error {
 	id, err := sshcredentials.Fingerprint(sshCredential.Spec.PublicKey)
 	if err != nil {
 		return fmt.Errorf("error fingerprinting SSH public key %q: %v", sshCredential.Name, err)

@@ -32,7 +32,6 @@ import (
 	"k8s.io/kops/pkg/client/simple"
 	"k8s.io/kops/pkg/client/simple/vfsclientset"
 	"k8s.io/kops/upup/pkg/fi"
-	"k8s.io/kops/upup/pkg/fi/secrets"
 	"k8s.io/kops/util/pkg/vfs"
 )
 
@@ -112,17 +111,17 @@ func (c *RESTClientset) InstanceGroupsFor(cluster *kops.Cluster) kopsinternalver
 
 func (c *RESTClientset) SecretStore(cluster *kops.Cluster) (fi.SecretStore, error) {
 	namespace := restNamespaceForClusterName(cluster.Name)
-	return secrets.NewClientsetSecretStore(cluster, c.KopsClient, namespace), nil
+	return NewClientsetSecretStore(cluster, c.KopsClient, namespace), nil
 }
 
 func (c *RESTClientset) KeyStore(cluster *kops.Cluster) (fi.CAStore, error) {
 	namespace := restNamespaceForClusterName(cluster.Name)
-	return fi.NewClientsetCAStore(cluster, c.KopsClient, namespace), nil
+	return NewClientsetCAStore(cluster, c.KopsClient, namespace), nil
 }
 
 func (c *RESTClientset) SSHCredentialStore(cluster *kops.Cluster) (fi.SSHCredentialStore, error) {
 	namespace := restNamespaceForClusterName(cluster.Name)
-	return fi.NewClientsetSSHCredentialStore(cluster, c.KopsClient, namespace), nil
+	return NewClientsetSSHCredentialStore(cluster, c.KopsClient, namespace), nil
 }
 
 func (c *RESTClientset) DeleteCluster(ctx context.Context, cluster *kops.Cluster) error {

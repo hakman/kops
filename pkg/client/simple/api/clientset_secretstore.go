@@ -1,5 +1,5 @@
 /*
-Copyright 2017 The Kubernetes Authors.
+Copyright 2019 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package secrets
+package api
 
 import (
 	"bytes"
@@ -31,12 +31,13 @@ import (
 	kopsinternalversion "k8s.io/kops/pkg/client/clientset_generated/clientset/typed/kops/internalversion"
 	"k8s.io/kops/pkg/pki"
 	"k8s.io/kops/upup/pkg/fi"
+	"k8s.io/kops/upup/pkg/fi/secrets"
 	"k8s.io/kops/util/pkg/vfs"
 	"k8s.io/kops/util/pkg/vfs/acls"
 )
 
-// NamePrefix is a prefix we use to avoid collisions with other keysets
-const NamePrefix = "token-"
+// namePrefix is a prefix we use to avoid collisions with other keysets
+const namePrefix = "token-"
 
 // ClientsetSecretStore is a SecretStore backed by Keyset objects in an API server
 type ClientsetSecretStore struct {
@@ -75,8 +76,8 @@ func (c *ClientsetSecretStore) MirrorTo(ctx context.Context, basedir vfs.Path) e
 			return fmt.Errorf("found secret with no primary data: %s", keyset.Name)
 		}
 
-		name := strings.TrimPrefix(keyset.Name, NamePrefix)
-		p := BuildVfsSecretPath(basedir, name)
+		name := strings.TrimPrefix(keyset.Name, namePrefix)
+		p := secrets.BuildVfsSecretPath(basedir, name)
 
 		s := &fi.Secret{
 			Data: primary.PrivateMaterial,
@@ -124,7 +125,7 @@ func (c *ClientsetSecretStore) ListSecrets() ([]string, error) {
 		keyset := &list.Items[i]
 
 		if keyset.Spec.Type == kops.SecretTypeSecret {
-			name := strings.TrimPrefix(keyset.Name, NamePrefix)
+			name := strings.TrimPrefix(keyset.Name, namePrefix)
 			names = append(names, name)
 		}
 	}
@@ -224,7 +225,7 @@ func (c *ClientsetSecretStore) ReplaceSecret(name string, secret *fi.Secret) (*f
 
 // loadSecret returns the named secret, if it exists, otherwise returns nil
 func (c *ClientsetSecretStore) loadSecret(ctx context.Context, name string) (*fi.Secret, error) {
-	name = NamePrefix + name
+	name = namePrefix + name
 	keyset, err := c.clientset.Keysets(c.namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -251,7 +252,7 @@ func parseSecret(keyset *kops.Keyset) (*fi.Secret, error) {
 // createSecret will create the Secret, overwriting an existing secret if replace is true
 func (c *ClientsetSecretStore) createSecret(ctx context.Context, s *fi.Secret, name string, replace bool) (*kops.Keyset, error) {
 	keyset := &kops.Keyset{}
-	keyset.Name = NamePrefix + name
+	keyset.Name = namePrefix + name
 	keyset.Spec.Type = kops.SecretTypeSecret
 
 	t := time.Now().UnixNano()

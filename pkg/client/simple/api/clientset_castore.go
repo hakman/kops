@@ -14,21 +14,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package fi
+package api
 
 import (
 	"context"
 	"fmt"
-	"math/big"
 	"strings"
 
 	"golang.org/x/crypto/ssh"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/klog/v2"
 	"k8s.io/kops/pkg/apis/kops"
 	kopsinternalversion "k8s.io/kops/pkg/client/clientset_generated/clientset/typed/kops/internalversion"
 	"k8s.io/kops/pkg/pki"
+	"k8s.io/kops/upup/pkg/fi"
 	"k8s.io/kops/util/pkg/vfs"
 )
 
@@ -40,8 +39,8 @@ type ClientsetCAStore struct {
 }
 
 var (
-	_ CAStore            = &ClientsetCAStore{}
-	_ SSHCredentialStore = &ClientsetCAStore{}
+	_ fi.CAStore            = &ClientsetCAStore{}
+	_ fi.SSHCredentialStore = &ClientsetCAStore{}
 )
 
 // NewClientsetCAStore is the constructor for ClientsetCAStore
@@ -56,7 +55,7 @@ func NewClientsetCAStore(cluster *kops.Cluster, clientset kopsinternalversion.Ko
 }
 
 // NewClientsetSSHCredentialStore creates an SSHCredentialStore backed by an API client
-func NewClientsetSSHCredentialStore(cluster *kops.Cluster, clientset kopsinternalversion.KopsInterface, namespace string) SSHCredentialStore {
+func NewClientsetSSHCredentialStore(cluster *kops.Cluster, clientset kopsinternalversion.KopsInterface, namespace string) fi.SSHCredentialStore {
 	// Note: currently identical to NewClientsetCAStore
 	c := &ClientsetCAStore{
 		cluster:   cluster,
@@ -67,48 +66,8 @@ func NewClientsetSSHCredentialStore(cluster *kops.Cluster, clientset kopsinterna
 	return c
 }
 
-func parseKeyset(o *kops.Keyset) (*Keyset, error) {
-	name := o.Name
-
-	keyset := &Keyset{
-		Items: make(map[string]*KeysetItem),
-	}
-
-	for _, key := range o.Spec.Keys {
-		ki := &KeysetItem{
-			Id: key.Id,
-		}
-		if key.DistrustTimestamp != nil {
-			distrustTimestamp := key.DistrustTimestamp.Time
-			ki.DistrustTimestamp = &distrustTimestamp
-		}
-		if len(key.PublicMaterial) != 0 {
-			cert, err := pki.ParsePEMCertificate(key.PublicMaterial)
-			if err != nil {
-				klog.Warningf("key public material was %s", key.PublicMaterial)
-				return nil, fmt.Errorf("error loading certificate %s/%s: %v", name, key.Id, err)
-			}
-			ki.Certificate = cert
-		}
-
-		if len(key.PrivateMaterial) != 0 {
-			privateKey, err := pki.ParsePEMPrivateKey(key.PrivateMaterial)
-			if err != nil {
-				return nil, fmt.Errorf("error loading private key %s/%s: %v", name, key.Id, err)
-			}
-			ki.PrivateKey = privateKey
-		}
-
-		keyset.Items[key.Id] = ki
-	}
-
-	keyset.Primary = keyset.Items[FindPrimary(o).Id]
-
-	return keyset, nil
-}
-
 // loadKeyset gets the named Keyset and the format of the Keyset.
-func (c *ClientsetCAStore) loadKeyset(ctx context.Context, name string) (*Keyset, error) {
+func (c *ClientsetCAStore) loadKeyset(ctx context.Context, name string) (*fi.Keyset, error) {
 	o, err := c.clientset.Keysets(c.namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -117,46 +76,15 @@ func (c *ClientsetCAStore) loadKeyset(ctx context.Context, name string) (*Keyset
 		return nil, fmt.Errorf("error reading keyset %q: %v", name, err)
 	}
 
-	keyset, err := parseKeyset(o)
+	keyset, err := fi.ParseKeyset(o)
 	if err != nil {
 		return nil, err
 	}
 	return keyset, nil
 }
 
-// FindPrimary returns the primary KeysetItem in the Keyset
-func FindPrimary(keyset *kops.Keyset) *kops.KeysetItem {
-	var primary *kops.KeysetItem
-	var primaryVersion *big.Int
-
-	primaryId := keyset.Spec.PrimaryID
-
-	for i := range keyset.Spec.Keys {
-		item := &keyset.Spec.Keys[i]
-		if item.DistrustTimestamp != nil {
-			continue
-		}
-
-		version, ok := big.NewInt(0).SetString(item.Id, 10)
-		if !ok {
-			klog.Warningf("Ignoring key item with non-integer version: %q", item.Id)
-			continue
-		}
-
-		if item.Id == primaryId {
-			return item
-		}
-
-		if primaryVersion == nil || version.Cmp(primaryVersion) > 0 {
-			primary = item
-			primaryVersion = version
-		}
-	}
-	return primary
-}
-
 // FindKeyset implements KeystoreReader.
-func (c *ClientsetCAStore) FindKeyset(ctx context.Context, name string) (*Keyset, error) {
+func (c *ClientsetCAStore) FindKeyset(ctx context.Context, name string) (*fi.Keyset, error) {
 	return c.loadKeyset(ctx, name)
 }
 
@@ -180,9 +108,9 @@ func (c *ClientsetCAStore) FindPrimaryKeypair(ctx context.Context, name string) 
 }
 
 // ListKeysets implements CAStore::ListKeysets
-func (c *ClientsetCAStore) ListKeysets() (map[string]*Keyset, error) {
+func (c *ClientsetCAStore) ListKeysets() (map[string]*fi.Keyset, error) {
 	ctx := context.TODO()
-	items := map[string]*Keyset{}
+	items := map[string]*fi.Keyset{}
 
 	{
 		list, err := c.clientset.Keysets(c.namespace).List(ctx, metav1.ListOptions{})
@@ -194,7 +122,7 @@ func (c *ClientsetCAStore) ListKeysets() (map[string]*Keyset, error) {
 			keyset := &list.Items[i]
 			switch keyset.Spec.Type {
 			case kops.SecretTypeKeypair:
-				item, err := parseKeyset(keyset)
+				item, err := fi.ParseKeyset(keyset)
 				if err != nil {
 					return nil, fmt.Errorf("parsing keyset %q: %w", keyset.Name, err)
 				}
@@ -213,12 +141,12 @@ func (c *ClientsetCAStore) ListKeysets() (map[string]*Keyset, error) {
 }
 
 // StoreKeyset implements CAStore::StoreKeyset
-func (c *ClientsetCAStore) StoreKeyset(ctx context.Context, name string, keyset *Keyset) error {
+func (c *ClientsetCAStore) StoreKeyset(ctx context.Context, name string, keyset *fi.Keyset) error {
 	return c.storeKeyset(ctx, name, keyset)
 }
 
 // storeKeyset saves the specified keyset to the registry.
-func (c *ClientsetCAStore) storeKeyset(ctx context.Context, name string, keyset *Keyset) error {
+func (c *ClientsetCAStore) storeKeyset(ctx context.Context, name string, keyset *fi.Keyset) error {
 	create := false
 	client := c.clientset.Keysets(c.namespace)
 
@@ -335,7 +263,7 @@ func (c *ClientsetCAStore) MirrorTo(ctx context.Context, basedir vfs.Path) error
 	}
 
 	for name, keyset := range keysets {
-		if err := mirrorKeyset(ctx, c.cluster, basedir, name, keyset); err != nil {
+		if err := fi.MirrorKeyset(ctx, c.cluster, basedir, name, keyset); err != nil {
 			return err
 		}
 	}
@@ -346,7 +274,7 @@ func (c *ClientsetCAStore) MirrorTo(ctx context.Context, basedir vfs.Path) error
 	}
 
 	for _, sshCredential := range sshCredentials {
-		if err := mirrorSSHCredential(ctx, c.cluster, basedir, sshCredential); err != nil {
+		if err := fi.MirrorSSHCredential(ctx, c.cluster, basedir, sshCredential); err != nil {
 			return err
 		}
 	}
