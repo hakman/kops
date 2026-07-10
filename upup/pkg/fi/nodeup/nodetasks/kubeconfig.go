@@ -20,7 +20,7 @@ import (
 	"fmt"
 
 	"k8s.io/kops/pkg/apis/kops"
-	"k8s.io/kops/pkg/kubeconfig"
+	"k8s.io/kops/pkg/kubectlconfig"
 	"k8s.io/kops/upup/pkg/fi"
 )
 
@@ -86,34 +86,34 @@ func (k *KubeConfig) Run(_ *fi.NodeupContext) error {
 		return err
 	}
 
-	user := kubeconfig.KubectlUser{
+	user := kubectlconfig.KubectlUser{
 		ClientCertificateData: cert,
 		ClientKeyData:         key,
 	}
-	cluster := kubeconfig.KubectlCluster{
+	cluster := kubectlconfig.KubectlCluster{
 		CertificateAuthorityData: ca,
 		Server:                   k.ServerURL,
 	}
 
-	config := &kubeconfig.KubectlConfig{
+	config := &kubectlconfig.KubectlConfig{
 		ApiVersion: "v1",
 		Kind:       "Config",
-		Users: []*kubeconfig.KubectlUserWithName{
+		Users: []*kubectlconfig.KubectlUserWithName{
 			{
 				Name: k.Name,
 				User: user,
 			},
 		},
-		Clusters: []*kubeconfig.KubectlClusterWithName{
+		Clusters: []*kubectlconfig.KubectlClusterWithName{
 			{
 				Name:    "local",
 				Cluster: cluster,
 			},
 		},
-		Contexts: []*kubeconfig.KubectlContextWithName{
+		Contexts: []*kubectlconfig.KubectlContextWithName{
 			{
 				Name: "service-account-context",
-				Context: kubeconfig.KubectlContext{
+				Context: kubectlconfig.KubectlContext{
 					Cluster: "local",
 					User:    k.Name,
 				},

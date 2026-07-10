@@ -14,7 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package kubeconfig
+// Package kubectlconfig contains plain structs for writing kubeconfig
+// files, without pulling in client-go's clientcmd machinery.
+package kubectlconfig
 
 type KubectlConfig struct {
 	Kind           string                    `json:"kind"`

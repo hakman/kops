@@ -28,7 +28,7 @@ import (
 	"k8s.io/kops/pkg/apis/kops"
 	"k8s.io/kops/pkg/flagbuilder"
 	"k8s.io/kops/pkg/k8scodecs"
-	"k8s.io/kops/pkg/kubeconfig"
+	"k8s.io/kops/pkg/kubectlconfig"
 	"k8s.io/kops/pkg/kubemanifest"
 	"k8s.io/kops/pkg/tokens"
 	"k8s.io/kops/pkg/wellknownports"
@@ -304,27 +304,27 @@ func (b *KubeAPIServerBuilder) writeAuthenticationConfig(c *fi.NodeupModelBuilde
 	}
 
 	if b.NodeupConfig.APIServerConfig.Authentication.Kopeio != nil {
-		cluster := kubeconfig.KubectlCluster{
+		cluster := kubectlconfig.KubectlCluster{
 			Server: "http://127.0.0.1:9001/hooks/authn",
 		}
-		context := kubeconfig.KubectlContext{
+		context := kubectlconfig.KubectlContext{
 			Cluster: "webhook",
 			User:    "kube-apiserver",
 		}
 
-		config := kubeconfig.KubectlConfig{
+		config := kubectlconfig.KubectlConfig{
 			Kind:       "Config",
 			ApiVersion: "v1",
 		}
-		config.Clusters = append(config.Clusters, &kubeconfig.KubectlClusterWithName{
+		config.Clusters = append(config.Clusters, &kubectlconfig.KubectlClusterWithName{
 			Name:    "webhook",
 			Cluster: cluster,
 		})
-		config.Users = append(config.Users, &kubeconfig.KubectlUserWithName{
+		config.Users = append(config.Users, &kubectlconfig.KubectlUserWithName{
 			Name: "kube-apiserver",
 		})
 		config.CurrentContext = "webhook"
-		config.Contexts = append(config.Contexts, &kubeconfig.KubectlContextWithName{
+		config.Contexts = append(config.Contexts, &kubectlconfig.KubectlContextWithName{
 			Name:    "webhook",
 			Context: context,
 		})
@@ -348,25 +348,25 @@ func (b *KubeAPIServerBuilder) writeAuthenticationConfig(c *fi.NodeupModelBuilde
 		kubeAPIServer.AuthenticationTokenWebhookConfigFile = new(PathAuthnConfig)
 
 		{
-			cluster := kubeconfig.KubectlCluster{
+			cluster := kubectlconfig.KubectlCluster{
 				Server:                   "https://127.0.0.1:21362/authenticate",
 				CertificateAuthorityData: []byte(b.NodeupConfig.CAs[fi.CertificateIDCA]),
 			}
-			context := kubeconfig.KubectlContext{
+			context := kubectlconfig.KubectlContext{
 				Cluster: "aws-iam-authenticator",
 				User:    "kube-apiserver",
 			}
 
-			config := kubeconfig.KubectlConfig{}
-			config.Clusters = append(config.Clusters, &kubeconfig.KubectlClusterWithName{
+			config := kubectlconfig.KubectlConfig{}
+			config.Clusters = append(config.Clusters, &kubectlconfig.KubectlClusterWithName{
 				Name:    "aws-iam-authenticator",
 				Cluster: cluster,
 			})
-			config.Users = append(config.Users, &kubeconfig.KubectlUserWithName{
+			config.Users = append(config.Users, &kubectlconfig.KubectlUserWithName{
 				Name: "kube-apiserver",
 			})
 			config.CurrentContext = "webhook"
-			config.Contexts = append(config.Contexts, &kubeconfig.KubectlContextWithName{
+			config.Contexts = append(config.Contexts, &kubectlconfig.KubectlContextWithName{
 				Name:    "webhook",
 				Context: context,
 			})
