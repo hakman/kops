@@ -20,6 +20,45 @@ import (
 	"testing"
 )
 
+func TestECRRegistryRegion(t *testing.T) {
+	grid := []struct {
+		registry       string
+		expectedRegion string
+		expectError    bool
+	}{
+		{
+			registry:       "123456789012.dkr.ecr.us-east-1.amazonaws.com",
+			expectedRegion: "us-east-1",
+		},
+		{
+			registry:       "123456789012.dkr.ecr.eu-central-1.amazonaws.com",
+			expectedRegion: "eu-central-1",
+		},
+		{
+			registry:    "registry.example.com",
+			expectError: true,
+		},
+	}
+
+	for _, g := range grid {
+		t.Run(g.registry, func(t *testing.T) {
+			region, err := ecrRegistryRegion(g.registry)
+			if g.expectError {
+				if err == nil {
+					t.Fatalf("expected an error, got region %q", region)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if region != g.expectedRegion {
+				t.Errorf("unexpected region: expected %q, but got %q", g.expectedRegion, region)
+			}
+		})
+	}
+}
+
 func TestParseBearerChallenge(t *testing.T) {
 	grid := []struct {
 		challenge       string

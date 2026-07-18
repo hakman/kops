@@ -1511,7 +1511,12 @@ any cloud provider. On Azure, the registry may instead be an Azure Container Reg
 cluster's instances must be granted `AcrPull` on the registry. On GCE, the registry may
 be an Artifact Registry repository (`<region>-docker.pkg.dev`); nodes then authenticate
 using their service account, which must be granted the Artifact Registry Reader role on
-the repository. In all cases the registry must already exist.
+the repository. On AWS, the registry may be an Amazon ECR private registry
+(`<account>.dkr.ecr.<region>.amazonaws.com`); nodes then authenticate using the instance
+role, which must be allowed to pull from the registry (for example with
+`spec.iam.allowContainerRegistry: true`). The ECR option requires curl 7.86 or newer on
+the node image (available in Ubuntu 24.04, Debian 12, Amazon Linux 2023 and Flatcar, but
+not in Ubuntu 22.04 or EL9). In all cases the registry must already exist.
 
 Run `kops get assets --copy` to push the file assets to the registry before bringing up the
 cluster or applying an update that changes the assets.

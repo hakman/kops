@@ -18,6 +18,8 @@ package fi
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -27,6 +29,8 @@ import (
 	"sync"
 	"time"
 
+	awsv4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"k8s.io/kops/util/pkg/hashing"
 )
 
@@ -55,39 +59,47 @@ func openOCIBlob(ctx context.Context, u *url.URL, hash *hashing.Hash) (io.ReadCl
 	blobURL := fmt.Sprintf("https://%s/v2/%s/blobs/sha256:%s", registry, repository, hash.Hex())
 	httpClient := newDownloadHTTPClient()
 
-	token := ""
+	auth := ""
 	switch {
 	case strings.HasSuffix(registry, ".azurecr.io"):
 		// Azure Container Registry: authenticate with the instance's managed identity.
-		acrToken, err := acrPullToken(ctx, registry, repository)
+		token, err := acrPullToken(ctx, registry, repository)
 		if err != nil {
 			return nil, fmt.Errorf("getting pull token for registry %q: %w", registry, err)
 		}
-		token = acrToken
+		auth = "Bearer " + token
 	case strings.HasSuffix(registry, ".pkg.dev"):
 		// Artifact Registry: authenticate with an access token for the
 		// instance's service account, accepted directly as a bearer token.
-		gcpToken, err := gceInstanceAccessToken(ctx)
+		token, err := gceInstanceAccessToken(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("getting pull token for registry %q: %w", registry, err)
 		}
-		token = gcpToken
+		auth = "Bearer " + token
+	case isECRRegistry(registry):
+		// Amazon ECR: authenticate with an authorization token obtained with
+		// the instance role credentials, used as HTTP basic auth.
+		header, err := ecrAuthorizationHeader(ctx, registry)
+		if err != nil {
+			return nil, fmt.Errorf("getting pull token for registry %q: %w", registry, err)
+		}
+		auth = header
 	}
 
-	response, err := getOCIBlob(ctx, httpClient, blobURL, token)
+	response, err := getOCIBlob(ctx, httpClient, blobURL, auth)
 	if err != nil {
 		return nil, err
 	}
-	if response.StatusCode == http.StatusUnauthorized && token == "" {
+	if response.StatusCode == http.StatusUnauthorized && auth == "" {
 		// Anonymous pulls may still need a token, obtained anonymously from the
 		// endpoint advertised in the unauthorized response's challenge.
 		challenge := response.Header.Get("WWW-Authenticate")
 		response.Body.Close()
-		token, err = anonymousPullToken(ctx, challenge, repository)
+		token, err := anonymousPullToken(ctx, challenge, repository)
 		if err != nil {
 			return nil, fmt.Errorf("getting anonymous pull token for registry %q: %w", registry, err)
 		}
-		response, err = getOCIBlob(ctx, httpClient, blobURL, token)
+		response, err = getOCIBlob(ctx, httpClient, blobURL, "Bearer "+token)
 		if err != nil {
 			return nil, err
 		}
@@ -99,13 +111,13 @@ func openOCIBlob(ctx context.Context, u *url.URL, hash *hashing.Hash) (io.ReadCl
 	return response.Body, nil
 }
 
-func getOCIBlob(ctx context.Context, httpClient *http.Client, blobURL, token string) (*http.Response, error) {
+func getOCIBlob(ctx context.Context, httpClient *http.Client, blobURL, auth string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, blobURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("cannot create request: %w", err)
 	}
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
+	if auth != "" {
+		req.Header.Set("Authorization", auth)
 	}
 	response, err := httpClient.Do(req)
 	if err != nil {
@@ -263,6 +275,94 @@ func gceInstanceAccessToken(ctx context.Context) (string, error) {
 	}
 
 	return tokenFromJSON(response.Body, "access_token")
+}
+
+// isECRRegistry reports whether the registry is an Amazon ECR private registry
+// (<account>.dkr.ecr.<region>.amazonaws.com).
+func isECRRegistry(registry string) bool {
+	return strings.Contains(registry, ".dkr.ecr.") && strings.HasSuffix(registry, ".amazonaws.com")
+}
+
+// ecrAuthHeaders caches the Authorization header per registry: every asset
+// download needs one, and the authorization token is valid for 12 hours.
+var (
+	ecrAuthMu      sync.Mutex
+	ecrAuthHeaders = map[string]string{}
+)
+
+// ecrAuthorizationHeader returns the Authorization header for an Amazon ECR
+// registry: an authorization token obtained with the instance role credentials,
+// which the registry accepts as HTTP basic auth.
+func ecrAuthorizationHeader(ctx context.Context, registry string) (string, error) {
+	ecrAuthMu.Lock()
+	defer ecrAuthMu.Unlock()
+	if header, ok := ecrAuthHeaders[registry]; ok {
+		return header, nil
+	}
+
+	region, err := ecrRegistryRegion(registry)
+	if err != nil {
+		return "", err
+	}
+
+	cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(region))
+	if err != nil {
+		return "", fmt.Errorf("loading AWS config: %w", err)
+	}
+	credentials, err := cfg.Credentials.Retrieve(ctx)
+	if err != nil {
+		return "", fmt.Errorf("retrieving AWS credentials: %w", err)
+	}
+
+	// Call GetAuthorizationToken directly, without linking the ECR service client.
+	body := "{}"
+	endpoint := fmt.Sprintf("https://api.ecr.%s.amazonaws.com/", region)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("cannot create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-amz-json-1.1")
+	req.Header.Set("X-Amz-Target", "AmazonEC2ContainerRegistry_V20150921.GetAuthorizationToken")
+	payloadHash := sha256.Sum256([]byte(body))
+	if err := awsv4.NewSigner().SignHTTP(ctx, credentials, req, hex.EncodeToString(payloadHash[:]), "ecr", region, time.Now()); err != nil {
+		return "", fmt.Errorf("signing the request: %w", err)
+	}
+
+	response, err := newDownloadHTTPClient().Do(req)
+	if err != nil {
+		return "", fmt.Errorf("error posting to %q: %w", endpoint, err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode > 299 {
+		return "", fmt.Errorf("unexpected response from %q: HTTP %s", endpoint, response.Status)
+	}
+
+	var result struct {
+		AuthorizationData []struct {
+			AuthorizationToken string `json:"authorizationToken"`
+		} `json:"authorizationData"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("cannot decode response: %w", err)
+	}
+	if len(result.AuthorizationData) == 0 || result.AuthorizationData[0].AuthorizationToken == "" {
+		return "", fmt.Errorf("response from %q did not contain an authorization token", endpoint)
+	}
+
+	header := "Basic " + result.AuthorizationData[0].AuthorizationToken
+	ecrAuthHeaders[registry] = header
+	return header, nil
+}
+
+// ecrRegistryRegion extracts the region from an Amazon ECR registry host
+// (<account>.dkr.ecr.<region>.amazonaws.com).
+func ecrRegistryRegion(registry string) (string, error) {
+	_, after, found := strings.Cut(registry, ".dkr.ecr.")
+	region, _, _ := strings.Cut(after, ".")
+	if !found || region == "" {
+		return "", fmt.Errorf("cannot extract the region from ECR registry %q", registry)
+	}
+	return region, nil
 }
 
 // azureInstanceIdentityToken returns a managed-identity token from the Azure

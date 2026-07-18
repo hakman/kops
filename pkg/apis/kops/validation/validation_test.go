@@ -2284,4 +2284,8 @@ func TestValidateFileRepository(t *testing.T) {
 	testErrors(t, "Artifact Registry on GCE", errs, nil)
 	errs = validateFileRepository(awsCluster, "oci://us-docker.pkg.dev/my-project/assets", field.NewPath("spec", "assets", "fileRepository"))
 	testErrors(t, "Artifact Registry on AWS", errs, []string{"Forbidden::spec.assets.fileRepository"})
+	errs = validateFileRepository(awsCluster, "oci://123456789012.dkr.ecr.us-east-1.amazonaws.com/assets", field.NewPath("spec", "assets", "fileRepository"))
+	testErrors(t, "ECR on AWS", errs, nil)
+	errs = validateFileRepository(gceCluster, "oci://123456789012.dkr.ecr.us-east-1.amazonaws.com/assets", field.NewPath("spec", "assets", "fileRepository"))
+	testErrors(t, "ECR on GCE", errs, []string{"Forbidden::spec.assets.fileRepository"})
 }

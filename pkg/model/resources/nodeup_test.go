@@ -100,18 +100,37 @@ func Test_NodeUpScriptOCIAssetRegistry(t *testing.T) {
 			t.Errorf("expected the nodeup script to contain %q", expected)
 		}
 	}
-	for _, unexpected := range []string{"azurecr", "/oauth2/exchange", "gcloud storage cp"} {
+	for _, unexpected := range []string{"azurecr", "/oauth2/exchange", "dkr.ecr", "gcloud storage cp"} {
+		if strings.Contains(rendered, unexpected) {
+			t.Errorf("expected the nodeup script to not contain %q", unexpected)
+		}
+	}
+
+	// On AWS, an ECR registry is authenticated with the instance role via a
+	// SigV4-signed GetAuthorizationToken call.
+	rendered = renderScript("aws", "oci://123456789012.dkr.ecr.us-east-1.amazonaws.com/assets")
+	for _, expected := range []string{
+		"download-oci()",
+		"*.dkr.ecr.*.amazonaws.com)",
+		"--aws-sigv4",
+		`realm=$(`,
+	} {
+		if !strings.Contains(rendered, expected) {
+			t.Errorf("expected the nodeup script to contain %q", expected)
+		}
+	}
+	for _, unexpected := range []string{"azurecr", "pkg.dev"} {
 		if strings.Contains(rendered, unexpected) {
 			t.Errorf("expected the nodeup script to not contain %q", unexpected)
 		}
 	}
 
 	// On clouds without an authenticated registry, only anonymous pulls are emitted.
-	rendered = renderScript("aws", "oci://registry.example.com/assets")
+	rendered = renderScript("hetzner", "oci://registry.example.com/assets")
 	if !strings.Contains(rendered, "download-oci()") {
 		t.Errorf("expected the nodeup script to contain the OCI download function")
 	}
-	for _, unexpected := range []string{"azurecr", "pkg.dev"} {
+	for _, unexpected := range []string{"azurecr", "pkg.dev", "dkr.ecr"} {
 		if strings.Contains(rendered, unexpected) {
 			t.Errorf("expected the nodeup script to not contain %q", unexpected)
 		}

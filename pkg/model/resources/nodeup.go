@@ -282,6 +282,7 @@ func (b *NodeUpScript) ociDownloadFunctions() (string, error) {
       echo "== Failed to get a registry access token =="
       return 1
     fi
+    auth_header="Authorization: Bearer ${token}"
     ;;
 `
 	}
@@ -295,6 +296,35 @@ func (b *NodeUpScript) ociDownloadFunctions() (string, error) {
       echo "== Failed to get an access token from the instance metadata service =="
       return 1
     fi
+    auth_header="Authorization: Bearer ${token}"
+    ;;
+`
+	}
+
+	// Amazon ECR: an authorization token, obtained with the instance role
+	// credentials via a GetAuthorizationToken call signed by curl (--aws-sigv4
+	// requires curl >= 7.86), is accepted as HTTP basic auth.
+	ecrCase := ""
+	if b.CloudProvider == string(kops.CloudProviderAWS) {
+		ecrCase = `  *.dkr.ecr.*.amazonaws.com)
+    local region="${registry#*.dkr.ecr.}"
+    region="${region%%.*}"
+    local imds_token role creds ecr_token
+    imds_token=$(curl -fsS -X PUT -H "X-aws-ec2-metadata-token-ttl-seconds: 300" "http://169.254.169.254/latest/api/token")
+    role=$(curl -fsS -H "X-aws-ec2-metadata-token: ${imds_token}" "http://169.254.169.254/latest/meta-data/iam/security-credentials/")
+    creds=$(curl -fsS -H "X-aws-ec2-metadata-token: ${imds_token}" "http://169.254.169.254/latest/meta-data/iam/security-credentials/${role}")
+    local -r access_key=$(echo "${creds}" | sed -n 's/.*"AccessKeyId"[ ]*:[ ]*"\([^"]*\)".*/\1/p')
+    local -r secret_key=$(echo "${creds}" | sed -n 's/.*"SecretAccessKey"[ ]*:[ ]*"\([^"]*\)".*/\1/p')
+    local -r session_token=$(echo "${creds}" | sed -n 's/.*"Token"[ ]*:[ ]*"\([^"]*\)".*/\1/p')
+    if [[ -z "${access_key}" || -z "${secret_key}" || -z "${session_token}" ]]; then
+      echo "== Failed to get the instance role credentials =="
+      return 1
+    fi
+    if ! ecr_token=$(curl -fsS "https://api.ecr.${region}.amazonaws.com/" -d '{}' --aws-sigv4 "aws:amz:${region}:ecr" --user "${access_key}:${secret_key}" -H "X-Amz-Security-Token: ${session_token}" -H "Content-Type: application/x-amz-json-1.1" -H "X-Amz-Target: AmazonEC2ContainerRegistry_V20150921.GetAuthorizationToken" | sed -e 's/.*"authorizationToken":"//' -e 's/".*//'); then
+      echo "== Failed to get an ECR authorization token =="
+      return 1
+    fi
+    auth_header="Authorization: Basic ${ecr_token}"
     ;;
 `
 	}
@@ -310,10 +340,10 @@ download-oci() {
   local -r registry="${stripped%%/*}"
   local -r repository="${stripped#*/}"
   local -r blob_url="https://${registry}/v2/${repository}/blobs/sha256:${hash}"
-  local token
+  local token auth_header
 
   case "${registry}" in
-` + acrCase + arCase + `  *)
+` + acrCase + arCase + ecrCase + `  *)
     # Anonymous pull: try directly; on failure, get an anonymous pull token
     # from the endpoint advertised in the WWW-Authenticate challenge.
     if curl -f -Lo "${file}" --connect-timeout 20 --retry 6 --retry-delay 10 "${blob_url}"; then
@@ -331,10 +361,11 @@ download-oci() {
       echo "== Failed to get an anonymous pull token from ${realm} =="
       return 1
     fi
+    auth_header="Authorization: Bearer ${token}"
     ;;
   esac
 
-  curl -f -Lo "${file}" --connect-timeout 20 --retry 6 --retry-delay 10 -H "Authorization: Bearer ${token}" "${blob_url}"
+  curl -f -Lo "${file}" --connect-timeout 20 --retry 6 --retry-delay 10 -H "${auth_header}" "${blob_url}"
 }`, nil
 }
 
