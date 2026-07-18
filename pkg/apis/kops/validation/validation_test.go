@@ -2239,9 +2239,34 @@ func TestValidateFileRepository(t *testing.T) {
 			Input:          "https://",
 			ExpectedErrors: []string{"Invalid value::spec.assets.fileRepository"},
 		},
+		{
+			Input: "oci://myregistry.azurecr.io/assets",
+		},
+		{
+			Input:          "oci://registry.example.com/assets",
+			ExpectedErrors: []string{"Forbidden::spec.assets.fileRepository"},
+		},
+	}
+	cluster := &kops.Cluster{
+		Spec: kops.ClusterSpec{
+			CloudProvider: kops.CloudProviderSpec{
+				Azure: &kops.AzureSpec{},
+			},
+		},
 	}
 	for _, g := range grid {
-		errs := validateFileRepository(g.Input, field.NewPath("spec", "assets", "fileRepository"))
+		errs := validateFileRepository(cluster, g.Input, field.NewPath("spec", "assets", "fileRepository"))
 		testErrors(t, g.Input, errs, g.ExpectedErrors)
 	}
+
+	// oci:// is only supported on Azure.
+	awsCluster := &kops.Cluster{
+		Spec: kops.ClusterSpec{
+			CloudProvider: kops.CloudProviderSpec{
+				AWS: &kops.AWSSpec{},
+			},
+		},
+	}
+	errs := validateFileRepository(awsCluster, "oci://myregistry.azurecr.io/assets", field.NewPath("spec", "assets", "fileRepository"))
+	testErrors(t, "oci on AWS", errs, []string{"Forbidden::spec.assets.fileRepository"})
 }

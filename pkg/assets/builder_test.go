@@ -260,3 +260,30 @@ func TestAssetBuilderConcurrentCollection(t *testing.T) {
 		}
 	}
 }
+
+func TestRemapFile_OCIRepository(t *testing.T) {
+	builder := buildAssetBuilder(t)
+
+	fileRepository := "oci://myregistry.azurecr.io/assets"
+	builder.assetsLocation.FileRepository = &fileRepository
+
+	// CI builds are staged under paths with characters that are not allowed in
+	// OCI repository names, such as `+`.
+	canonicalURL, err := url.Parse("https://example.com/kops/1.37.0-alpha.2+v1.37.0-alpha.1/linux/amd64/nodeup")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	hash, err := hashing.FromString("833723369ad345a88dd85d61b1e77336d56e61b864557ded71b92b6e34158e6a")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	asset, err := builder.RemapFile(canonicalURL, hash)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := "oci://myregistry.azurecr.io/assets/kops/1.37.0-alpha.2_v1.37.0-alpha.1/linux/amd64/nodeup"
+	if a := asset.DownloadURL.String(); a != expected {
+		t.Errorf("unexpected remapped file (expecting: %s, got %s)", expected, a)
+	}
+}

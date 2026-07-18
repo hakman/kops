@@ -369,6 +369,12 @@ func (a *AssetBuilder) findHash(file *FileAsset) (*hashing.Hash, error) {
 		u = file.CanonicalURL
 	}
 
+	if u != nil && u.Scheme == "oci" {
+		// OCI artifacts are addressed by digest (the sha256 of the content), so the
+		// hash must come from the canonical source; the registry has no sidecar hash files.
+		u = file.CanonicalURL
+	}
+
 	if u == nil {
 		return nil, fmt.Errorf("file url is not defined")
 	}
@@ -441,9 +447,25 @@ func (a *AssetBuilder) remapURL(canonicalURL *url.URL) (*url.URL, error) {
 		return nil, fmt.Errorf("unable to parse assetsLocation.fileRepository %q: %v", f, err)
 	}
 
-	fileRepo.Path = path.Join(fileRepo.Path, canonicalURL.Path)
+	assetPath := canonicalURL.Path
+	if fileRepo.Scheme == "oci" {
+		// The path becomes an OCI repository name, which has a restricted character set.
+		assetPath = sanitizeOCIRepository(assetPath)
+	}
+	fileRepo.Path = path.Join(fileRepo.Path, assetPath)
 
 	return fileRepo, nil
+}
+
+// ociRepositoryIllegalCharacters matches the characters that are not allowed in
+// OCI repository names, which can only contain lowercase alphanumerics, `.`, `_`,
+// `-` and `/`.
+var ociRepositoryIllegalCharacters = regexp.MustCompile(`[^a-z0-9._/-]`)
+
+// sanitizeOCIRepository maps an asset path to a valid OCI repository name;
+// for example, CI builds are staged under paths containing `+`.
+func sanitizeOCIRepository(assetPath string) string {
+	return ociRepositoryIllegalCharacters.ReplaceAllString(strings.ToLower(assetPath), "_")
 }
 
 func NormalizeImage(a *AssetBuilder, image string) string {

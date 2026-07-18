@@ -230,7 +230,7 @@ func validateClusterSpec(spec *kops.ClusterSpec, c *kops.Cluster, fieldPath *fie
 			allErrs = append(allErrs, field.Forbidden(fieldPath.Child("assets", "containerProxy"), "containerProxy cannot be used in conjunction with containerRegistry"))
 		}
 		if spec.Assets.FileRepository != nil {
-			allErrs = append(allErrs, validateFileRepository(*spec.Assets.FileRepository, fieldPath.Child("assets", "fileRepository"))...)
+			allErrs = append(allErrs, validateFileRepository(c, *spec.Assets.FileRepository, fieldPath.Child("assets", "fileRepository"))...)
 		}
 	}
 
@@ -781,7 +781,7 @@ func validateFileAssetSpec(v *kops.FileAssetSpec, fieldPath *field.Path) field.E
 	return allErrs
 }
 
-func validateFileRepository(s string, fieldPath *field.Path) field.ErrorList {
+func validateFileRepository(cluster *kops.Cluster, s string, fieldPath *field.Path) field.ErrorList {
 	allErrs := field.ErrorList{}
 
 	u, err := url.Parse(s)
@@ -789,8 +789,18 @@ func validateFileRepository(s string, fieldPath *field.Path) field.ErrorList {
 		allErrs = append(allErrs, field.Invalid(fieldPath, s, fmt.Sprintf("cannot parse fileRepository URL: %v", err)))
 		return allErrs
 	}
-	if u.Scheme != "http" && u.Scheme != "https" {
-		allErrs = append(allErrs, field.Invalid(fieldPath, s, "fileRepository must be an http:// or https:// URL"))
+	switch u.Scheme {
+	case "http", "https":
+	case "oci":
+		// The nodes authenticate to the registry with their instance identity,
+		// which is only implemented for Azure Container Registry so far.
+		if cluster.GetCloudProvider() != kops.CloudProviderAzure {
+			allErrs = append(allErrs, field.Forbidden(fieldPath, "an oci:// fileRepository is only supported on Azure"))
+		} else if !strings.HasSuffix(u.Host, ".azurecr.io") {
+			allErrs = append(allErrs, field.Forbidden(fieldPath, "an oci:// fileRepository must be an Azure Container Registry (<name>.azurecr.io)"))
+		}
+	default:
+		allErrs = append(allErrs, field.Invalid(fieldPath, s, "fileRepository must be an http://, https:// or oci:// URL"))
 	}
 	if u.Host == "" {
 		allErrs = append(allErrs, field.Invalid(fieldPath, s, "fileRepository must include a host"))
