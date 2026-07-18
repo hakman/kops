@@ -286,6 +286,19 @@ func (b *NodeUpScript) ociDownloadFunctions() (string, error) {
 `
 	}
 
+	// Artifact Registry: an access token for the instance's service account,
+	// from the metadata service, is accepted directly as a bearer token.
+	arCase := ""
+	if b.CloudProvider == string(kops.CloudProviderGCE) {
+		arCase = `  *.pkg.dev)
+    if ! token=$(curl -fsS -H "Metadata-Flavor: Google" "http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token" | sed -e 's/.*"access_token":"//' -e 's/".*//'); then
+      echo "== Failed to get an access token from the instance metadata service =="
+      return 1
+    fi
+    ;;
+`
+	}
+
 	return `
 # Download an OCI blob by digest. args: file, hash, url (oci://<registry>/<repository>)
 download-oci() {
@@ -300,7 +313,7 @@ download-oci() {
   local token
 
   case "${registry}" in
-` + acrCase + `  *)
+` + acrCase + arCase + `  *)
     # Anonymous pull: try directly; on failure, get an anonymous pull token
     # from the endpoint advertised in the WWW-Authenticate challenge.
     if curl -f -Lo "${file}" --connect-timeout 20 --retry 6 --retry-delay 10 "${blob_url}"; then

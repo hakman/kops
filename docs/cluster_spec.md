@@ -1507,9 +1507,11 @@ spec:
 
 A registry that allows anonymous pulls of the assets (a public registry) can be used on
 any cloud provider. On Azure, the registry may instead be an Azure Container Registry
-(`<name>.azurecr.io`); nodes then authenticate using their managed identity, so no public
-file server is needed, and the cluster's instances must be granted `AcrPull` on the
-registry. In both cases the registry must already exist.
+(`<name>.azurecr.io`); nodes then authenticate using their managed identity, and the
+cluster's instances must be granted `AcrPull` on the registry. On GCE, the registry may
+be an Artifact Registry repository (`<region>-docker.pkg.dev`); nodes then authenticate
+using their service account, which must be granted the Artifact Registry Reader role on
+the repository. In all cases the registry must already exist.
 
 Run `kops get assets --copy` to push the file assets to the registry before bringing up the
 cluster or applying an update that changes the assets.

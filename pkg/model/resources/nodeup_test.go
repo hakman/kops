@@ -81,12 +81,19 @@ func Test_NodeUpScriptOCIAssetRegistry(t *testing.T) {
 	if strings.Contains(rendered, "commands=(") {
 		t.Errorf("expected the nodeup script to not contain the generic download commands")
 	}
+	// The Artifact Registry branch is only emitted on GCE.
+	if strings.Contains(rendered, "pkg.dev") {
+		t.Errorf("expected the nodeup script to not contain the Artifact Registry branch")
+	}
 
-	// On other clouds only anonymous pulls are supported; the Azure Container
-	// Registry branch is not emitted.
-	rendered = renderScript("gce", "oci://registry.example.com/assets")
+	// On GCE, an Artifact Registry is authenticated with the instance's service
+	// account; the Azure Container Registry branch is not emitted, and the OCI
+	// download replaces the GCE download commands.
+	rendered = renderScript("gce", "oci://us-docker.pkg.dev/my-project/assets")
 	for _, expected := range []string{
 		"download-oci()",
+		"*.pkg.dev)",
+		"Metadata-Flavor: Google",
 		`realm=$(`,
 	} {
 		if !strings.Contains(rendered, expected) {
@@ -94,6 +101,17 @@ func Test_NodeUpScriptOCIAssetRegistry(t *testing.T) {
 		}
 	}
 	for _, unexpected := range []string{"azurecr", "/oauth2/exchange", "gcloud storage cp"} {
+		if strings.Contains(rendered, unexpected) {
+			t.Errorf("expected the nodeup script to not contain %q", unexpected)
+		}
+	}
+
+	// On clouds without an authenticated registry, only anonymous pulls are emitted.
+	rendered = renderScript("aws", "oci://registry.example.com/assets")
+	if !strings.Contains(rendered, "download-oci()") {
+		t.Errorf("expected the nodeup script to contain the OCI download function")
+	}
+	for _, unexpected := range []string{"azurecr", "pkg.dev"} {
 		if strings.Contains(rendered, unexpected) {
 			t.Errorf("expected the nodeup script to not contain %q", unexpected)
 		}

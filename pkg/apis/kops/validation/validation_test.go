@@ -2260,8 +2260,8 @@ func TestValidateFileRepository(t *testing.T) {
 		testErrors(t, g.Input, errs, g.ExpectedErrors)
 	}
 
-	// An Azure Container Registry is only supported on Azure; anonymous
-	// registries work on any cloud provider.
+	// An Azure Container Registry is only supported on Azure and an Artifact
+	// Registry only on GCE; anonymous registries work on any cloud provider.
 	awsCluster := &kops.Cluster{
 		Spec: kops.ClusterSpec{
 			CloudProvider: kops.CloudProviderSpec{
@@ -2269,8 +2269,19 @@ func TestValidateFileRepository(t *testing.T) {
 			},
 		},
 	}
+	gceCluster := &kops.Cluster{
+		Spec: kops.ClusterSpec{
+			CloudProvider: kops.CloudProviderSpec{
+				GCE: &kops.GCESpec{},
+			},
+		},
+	}
 	errs := validateFileRepository(awsCluster, "oci://myregistry.azurecr.io/assets", field.NewPath("spec", "assets", "fileRepository"))
 	testErrors(t, "ACR on AWS", errs, []string{"Forbidden::spec.assets.fileRepository"})
 	errs = validateFileRepository(awsCluster, "oci://registry.example.com/assets", field.NewPath("spec", "assets", "fileRepository"))
 	testErrors(t, "anonymous registry on AWS", errs, nil)
+	errs = validateFileRepository(gceCluster, "oci://us-docker.pkg.dev/my-project/assets", field.NewPath("spec", "assets", "fileRepository"))
+	testErrors(t, "Artifact Registry on GCE", errs, nil)
+	errs = validateFileRepository(awsCluster, "oci://us-docker.pkg.dev/my-project/assets", field.NewPath("spec", "assets", "fileRepository"))
+	testErrors(t, "Artifact Registry on AWS", errs, []string{"Forbidden::spec.assets.fileRepository"})
 }

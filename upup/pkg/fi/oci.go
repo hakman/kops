@@ -56,12 +56,22 @@ func openOCIBlob(ctx context.Context, u *url.URL, hash *hashing.Hash) (io.ReadCl
 	httpClient := newDownloadHTTPClient()
 
 	token := ""
-	if strings.HasSuffix(registry, ".azurecr.io") {
+	switch {
+	case strings.HasSuffix(registry, ".azurecr.io"):
+		// Azure Container Registry: authenticate with the instance's managed identity.
 		acrToken, err := acrPullToken(ctx, registry, repository)
 		if err != nil {
 			return nil, fmt.Errorf("getting pull token for registry %q: %w", registry, err)
 		}
 		token = acrToken
+	case strings.HasSuffix(registry, ".pkg.dev"):
+		// Artifact Registry: authenticate with an access token for the
+		// instance's service account, accepted directly as a bearer token.
+		gcpToken, err := gceInstanceAccessToken(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("getting pull token for registry %q: %w", registry, err)
+		}
+		token = gcpToken
 	}
 
 	response, err := getOCIBlob(ctx, httpClient, blobURL, token)
@@ -231,6 +241,28 @@ func acrPullToken(ctx context.Context, registry, repository string) (string, err
 var imdsHTTPClient = &http.Client{
 	Transport: &http.Transport{Proxy: nil},
 	Timeout:   10 * time.Second,
+}
+
+// gceInstanceAccessToken returns an access token for the instance's service
+// account from the GCE metadata service.
+func gceInstanceAccessToken(ctx context.Context) (string, error) {
+	metadataURL := "http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, metadataURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("cannot create request: %w", err)
+	}
+	req.Header.Set("Metadata-Flavor", "Google")
+
+	response, err := imdsHTTPClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("error querying the instance metadata service: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode > 299 {
+		return "", fmt.Errorf("unexpected response from the instance metadata service: HTTP %s", response.Status)
+	}
+
+	return tokenFromJSON(response.Body, "access_token")
 }
 
 // azureInstanceIdentityToken returns a managed-identity token from the Azure

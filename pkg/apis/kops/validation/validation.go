@@ -792,11 +792,15 @@ func validateFileRepository(cluster *kops.Cluster, s string, fieldPath *field.Pa
 	switch u.Scheme {
 	case "http", "https":
 	case "oci":
-		// Nodes authenticate to an Azure Container Registry with their instance
-		// identity, which requires Azure; any other registry must allow
-		// anonymous pulls and works on any cloud provider.
+		// Nodes authenticate to an Azure Container Registry with the instance's
+		// managed identity, and to an Artifact Registry with the instance's
+		// service account; any other registry must allow anonymous pulls and
+		// works on any cloud provider.
 		if strings.HasSuffix(u.Host, ".azurecr.io") && cluster.GetCloudProvider() != kops.CloudProviderAzure {
 			allErrs = append(allErrs, field.Forbidden(fieldPath, "an Azure Container Registry fileRepository is only supported on Azure"))
+		}
+		if strings.HasSuffix(u.Host, ".pkg.dev") && cluster.GetCloudProvider() != kops.CloudProviderGCE {
+			allErrs = append(allErrs, field.Forbidden(fieldPath, "an Artifact Registry fileRepository is only supported on GCE"))
 		}
 	default:
 		allErrs = append(allErrs, field.Invalid(fieldPath, s, "fileRepository must be an http://, https:// or oci:// URL"))
