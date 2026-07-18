@@ -2260,7 +2260,8 @@ func TestValidateFileRepository(t *testing.T) {
 		testErrors(t, g.Input, errs, g.ExpectedErrors)
 	}
 
-	// oci:// is only supported on Azure.
+	// An Azure Container Registry is only supported on Azure; anonymous
+	// registries work on any cloud provider.
 	awsCluster := &kops.Cluster{
 		Spec: kops.ClusterSpec{
 			CloudProvider: kops.CloudProviderSpec{
@@ -2269,5 +2270,7 @@ func TestValidateFileRepository(t *testing.T) {
 		},
 	}
 	errs := validateFileRepository(awsCluster, "oci://myregistry.azurecr.io/assets", field.NewPath("spec", "assets", "fileRepository"))
-	testErrors(t, "oci on AWS", errs, []string{"Forbidden::spec.assets.fileRepository"})
+	testErrors(t, "ACR on AWS", errs, []string{"Forbidden::spec.assets.fileRepository"})
+	errs = validateFileRepository(awsCluster, "oci://registry.example.com/assets", field.NewPath("spec", "assets", "fileRepository"))
+	testErrors(t, "anonymous registry on AWS", errs, nil)
 }

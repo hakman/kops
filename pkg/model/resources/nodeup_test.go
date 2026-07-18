@@ -36,7 +36,7 @@ func Test_NodeUpTabs(t *testing.T) {
 }
 
 func Test_NodeUpScriptOCIAssetRegistry(t *testing.T) {
-	renderScript := func(baseURL string) string {
+	renderScript := func(cloudProvider, baseURL string) string {
 		script := &NodeUpScript{
 			NodeUpAssets: map[architectures.Architecture]*assets.MirroredAsset{
 				architectures.ArchitectureAmd64: {
@@ -49,7 +49,7 @@ func Test_NodeUpScriptOCIAssetRegistry(t *testing.T) {
 				},
 			},
 			BootConfig:    &nodeup.BootConfig{},
-			CloudProvider: "azure",
+			CloudProvider: cloudProvider,
 		}
 		resource, err := script.Build()
 		if err != nil {
@@ -62,7 +62,7 @@ func Test_NodeUpScriptOCIAssetRegistry(t *testing.T) {
 		return rendered
 	}
 
-	rendered := renderScript("oci://myregistry.azurecr.io/assets")
+	rendered := renderScript("azure", "oci://myregistry.azurecr.io/assets")
 	for _, expected := range []string{
 		"download-oci()",
 		`if ! download-oci "${file}" "${hash}" "${url}"; then`,
@@ -82,7 +82,24 @@ func Test_NodeUpScriptOCIAssetRegistry(t *testing.T) {
 		t.Errorf("expected the nodeup script to not contain the generic download commands")
 	}
 
-	rendered = renderScript("https://artifacts.k8s.io")
+	// On other clouds only anonymous pulls are supported; the Azure Container
+	// Registry branch is not emitted.
+	rendered = renderScript("gce", "oci://registry.example.com/assets")
+	for _, expected := range []string{
+		"download-oci()",
+		`realm=$(`,
+	} {
+		if !strings.Contains(rendered, expected) {
+			t.Errorf("expected the nodeup script to contain %q", expected)
+		}
+	}
+	for _, unexpected := range []string{"azurecr", "/oauth2/exchange", "gcloud storage cp"} {
+		if strings.Contains(rendered, unexpected) {
+			t.Errorf("expected the nodeup script to not contain %q", unexpected)
+		}
+	}
+
+	rendered = renderScript("azure", "https://artifacts.k8s.io")
 	for _, unexpected := range []string{"download-oci"} {
 		if strings.Contains(rendered, unexpected) {
 			t.Errorf("expected the nodeup script to not contain %q", unexpected)

@@ -256,14 +256,34 @@ func (b *NodeUpScript) Build() (fi.Resource, error) {
 
 // ociDownloadFunctions returns a shell function that downloads a blob from an OCI
 // registry. Assets stored in OCI registries are addressed by digest, which is the
-// sha256 hash of their content. Azure Container Registries are authenticated with
-// the instance identity; other registries must allow anonymous pulls.
+// sha256 hash of their content. On Azure, an Azure Container Registry is
+// authenticated with the instance identity; other registries must allow
+// anonymous pulls and work on any cloud provider.
 func (b *NodeUpScript) ociDownloadFunctions() (string, error) {
 	if !b.usesOCIAssetRegistry() {
 		return "", nil
 	}
-	if b.CloudProvider != string(kops.CloudProviderAzure) {
-		return "", fmt.Errorf("OCI asset registry is not supported on cloud provider %q", b.CloudProvider)
+
+	// Azure Container Registry: exchange a managed-identity token from the instance
+	// metadata service for a registry refresh token, then for a pull-scoped access token.
+	acrCase := ""
+	if b.CloudProvider == string(kops.CloudProviderAzure) {
+		acrCase = `  *.azurecr.io)
+    local aad_token refresh_token
+    if ! aad_token=$(curl -fsS -H "Metadata: true" "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Fmanagement.azure.com%2F" | sed -e 's/.*"access_token":"//' -e 's/".*//'); then
+      echo "== Failed to get an identity token from the instance metadata service =="
+      return 1
+    fi
+    if ! refresh_token=$(curl -fsS "https://${registry}/oauth2/exchange" --data-urlencode "grant_type=access_token" --data-urlencode "service=${registry}" --data-urlencode "access_token=${aad_token}" | sed -e 's/.*"refresh_token":"//' -e 's/".*//'); then
+      echo "== Failed to exchange the identity token for a registry refresh token =="
+      return 1
+    fi
+    if ! token=$(curl -fsS "https://${registry}/oauth2/token" --data-urlencode "grant_type=refresh_token" --data-urlencode "service=${registry}" --data-urlencode "scope=repository:${repository}:pull" --data-urlencode "refresh_token=${refresh_token}" | sed -e 's/.*"access_token":"//' -e 's/".*//'); then
+      echo "== Failed to get a registry access token =="
+      return 1
+    fi
+    ;;
+`
 	}
 
 	return `
@@ -280,25 +300,8 @@ download-oci() {
   local token
 
   case "${registry}" in
-  *.azurecr.io)
-    # Azure Container Registry: exchange a managed-identity token from the instance
-    # metadata service for a registry refresh token, then for a pull-scoped access token.
-    local aad_token refresh_token
-    if ! aad_token=$(curl -fsS -H "Metadata: true" "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Fmanagement.azure.com%2F" | sed -e 's/.*"access_token":"//' -e 's/".*//'); then
-      echo "== Failed to get an identity token from the instance metadata service =="
-      return 1
-    fi
-    if ! refresh_token=$(curl -fsS "https://${registry}/oauth2/exchange" --data-urlencode "grant_type=access_token" --data-urlencode "service=${registry}" --data-urlencode "access_token=${aad_token}" | sed -e 's/.*"refresh_token":"//' -e 's/".*//'); then
-      echo "== Failed to exchange the identity token for a registry refresh token =="
-      return 1
-    fi
-    if ! token=$(curl -fsS "https://${registry}/oauth2/token" --data-urlencode "grant_type=refresh_token" --data-urlencode "service=${registry}" --data-urlencode "scope=repository:${repository}:pull" --data-urlencode "refresh_token=${refresh_token}" | sed -e 's/.*"access_token":"//' -e 's/".*//'); then
-      echo "== Failed to get a registry access token =="
-      return 1
-    fi
-    ;;
-  *)
-    # Public registry: try an anonymous pull; on 401, get an anonymous pull token
+` + acrCase + `  *)
+    # Anonymous pull: try directly; on failure, get an anonymous pull token
     # from the endpoint advertised in the WWW-Authenticate challenge.
     if curl -f -Lo "${file}" --connect-timeout 20 --retry 6 --retry-delay 10 "${blob_url}"; then
       return 0
@@ -323,7 +326,20 @@ download-oci() {
 }
 
 func (b *NodeUpScript) copyCheckUrlBlock() (string, error) {
-	if b.CloudProvider == string(kops.CloudProviderGCE) {
+	if b.usesOCIAssetRegistry() {
+		// All file assets are remapped to the OCI registry, so all urls are oci:// URLs.
+		return `if ! download-oci "${file}" "${hash}" "${url}"; then
+        echo "== Failed to download ${url} =="
+        continue
+      fi
+      if ! validate-hash "${file}" "${hash}"; then
+        echo "== Failed to validate hash for ${url} =="
+        rm -f "${file}"
+        continue
+      fi
+      echo "== Downloaded ${url} with hash ${hash} =="
+      return 0`, nil
+	} else if b.CloudProvider == string(kops.CloudProviderGCE) {
 		return `commands=(
         "gcloud storage cp ${url} ${file}"
         "curl -f --compressed -Lo ${file} --connect-timeout 20 --retry 6 --retry-delay 10 ${url}"
@@ -345,19 +361,6 @@ func (b *NodeUpScript) copyCheckUrlBlock() (string, error) {
           return 0
         fi
       done`, nil
-	} else if b.usesOCIAssetRegistry() {
-		// All file assets are remapped to the OCI registry, so all urls are oci:// URLs.
-		return `if ! download-oci "${file}" "${hash}" "${url}"; then
-        echo "== Failed to download ${url} =="
-        continue
-      fi
-      if ! validate-hash "${file}" "${hash}"; then
-        echo "== Failed to validate hash for ${url} =="
-        rm -f "${file}"
-        continue
-      fi
-      echo "== Downloaded ${url} with hash ${hash} =="
-      return 0`, nil
 	} else {
 		return `commands=(
         "curl -f --compressed -Lo ${file} --connect-timeout 20 --retry 6 --retry-delay 10"
