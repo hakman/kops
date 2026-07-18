@@ -66,7 +66,11 @@ func Test_NodeUpScriptOCIAssetRegistry(t *testing.T) {
 	for _, expected := range []string{
 		"download-oci()",
 		`if ! download-oci "${file}" "${hash}" "${url}"; then`,
+		// Azure Container Registries authenticate with the instance identity.
+		"*.azurecr.io)",
 		"/oauth2/exchange",
+		// Other registries are pulled anonymously.
+		`realm=$(`,
 		`"https://${registry}/v2/${repository}/blobs/sha256:${hash}"`,
 	} {
 		if !strings.Contains(rendered, expected) {

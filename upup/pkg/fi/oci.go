@@ -36,8 +36,8 @@ const ACRTokenUser = "00000000-0000-0000-0000-000000000000"
 
 // openOCIBlob opens a stream for an OCI registry blob addressed by digest.
 // The URL has the form oci://<registry>/<repository>; the digest is the sha256
-// hash of the asset. The registry is expected to be an Azure Container Registry,
-// authenticated with the instance's managed identity.
+// hash of the asset. An Azure Container Registry is authenticated with the
+// instance's managed identity; other registries must allow anonymous pulls.
 func openOCIBlob(ctx context.Context, u *url.URL, hash *hashing.Hash) (io.ReadCloser, error) {
 	if hash == nil {
 		return nil, fmt.Errorf("OCI asset %q requires a known hash", u)
@@ -52,29 +52,110 @@ func openOCIBlob(ctx context.Context, u *url.URL, hash *hashing.Hash) (io.ReadCl
 		return nil, fmt.Errorf("cannot parse OCI asset URL %q; expected oci://<registry>/<repository>", u)
 	}
 
-	token, err := acrPullToken(ctx, registry, repository)
-	if err != nil {
-		return nil, fmt.Errorf("getting pull token for registry %q: %w", registry, err)
-	}
-
 	blobURL := fmt.Sprintf("https://%s/v2/%s/blobs/sha256:%s", registry, repository, hash.Hex())
-
 	httpClient := newDownloadHTTPClient()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, blobURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("cannot create request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
 
-	response, err := httpClient.Do(req)
+	token := ""
+	if strings.HasSuffix(registry, ".azurecr.io") {
+		acrToken, err := acrPullToken(ctx, registry, repository)
+		if err != nil {
+			return nil, fmt.Errorf("getting pull token for registry %q: %w", registry, err)
+		}
+		token = acrToken
+	}
+
+	response, err := getOCIBlob(ctx, httpClient, blobURL, token)
 	if err != nil {
-		return nil, fmt.Errorf("error doing HTTP fetch of %q: %w", blobURL, err)
+		return nil, err
+	}
+	if response.StatusCode == http.StatusUnauthorized && token == "" {
+		// Anonymous pulls may still need a token, obtained anonymously from the
+		// endpoint advertised in the unauthorized response's challenge.
+		challenge := response.Header.Get("WWW-Authenticate")
+		response.Body.Close()
+		token, err = anonymousPullToken(ctx, challenge, repository)
+		if err != nil {
+			return nil, fmt.Errorf("getting anonymous pull token for registry %q: %w", registry, err)
+		}
+		response, err = getOCIBlob(ctx, httpClient, blobURL, token)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if response.StatusCode < 200 || response.StatusCode > 299 {
 		response.Body.Close()
 		return nil, fmt.Errorf("unexpected response from %q: HTTP %s", blobURL, response.Status)
 	}
 	return response.Body, nil
+}
+
+func getOCIBlob(ctx context.Context, httpClient *http.Client, blobURL, token string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, blobURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("cannot create request: %w", err)
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	response, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("error doing HTTP fetch of %q: %w", blobURL, err)
+	}
+	return response, nil
+}
+
+// anonymousPullToken obtains a pull token for an anonymous client from the token
+// endpoint advertised in a registry's WWW-Authenticate challenge.
+func anonymousPullToken(ctx context.Context, challenge, repository string) (string, error) {
+	realm, service, err := parseBearerChallenge(challenge)
+	if err != nil {
+		return "", err
+	}
+
+	tokenURL := realm + "?service=" + url.QueryEscape(service) + "&scope=" + url.QueryEscape("repository:"+repository+":pull")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, tokenURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("cannot create request: %w", err)
+	}
+
+	response, err := newDownloadHTTPClient().Do(req)
+	if err != nil {
+		return "", fmt.Errorf("error querying %q: %w", tokenURL, err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode > 299 {
+		return "", fmt.Errorf("unexpected response from %q: HTTP %s", tokenURL, response.Status)
+	}
+
+	// Registries return the token as "token" (Docker registry auth) or "access_token" (OAuth2).
+	return tokenFromJSON(response.Body, "token", "access_token")
+}
+
+// parseBearerChallenge extracts the realm and service from a Bearer WWW-Authenticate
+// challenge, such as `Bearer realm="https://auth.example.com/token",service="example.com"`.
+func parseBearerChallenge(challenge string) (string, string, error) {
+	params, ok := strings.CutPrefix(challenge, "Bearer ")
+	if !ok {
+		return "", "", fmt.Errorf("unsupported WWW-Authenticate challenge %q", challenge)
+	}
+
+	var realm, service string
+	for _, param := range strings.Split(params, ",") {
+		key, value, found := strings.Cut(strings.TrimSpace(param), "=")
+		if !found {
+			continue
+		}
+		switch key {
+		case "realm":
+			realm = strings.Trim(value, `"`)
+		case "service":
+			service = strings.Trim(value, `"`)
+		}
+	}
+	if realm == "" {
+		return "", "", fmt.Errorf("WWW-Authenticate challenge %q does not contain a realm", challenge)
+	}
+	return realm, service, nil
 }
 
 // acrRefreshTokens caches the registry refresh token per registry: every asset
@@ -193,14 +274,15 @@ func acrOAuthRequest(ctx context.Context, endpoint string, values url.Values, to
 	return tokenFromJSON(response.Body, tokenField)
 }
 
-func tokenFromJSON(r io.Reader, field string) (string, error) {
+func tokenFromJSON(r io.Reader, fields ...string) (string, error) {
 	var body map[string]any
 	if err := json.NewDecoder(r).Decode(&body); err != nil {
 		return "", fmt.Errorf("cannot decode response: %w", err)
 	}
-	token, _ := body[field].(string)
-	if token == "" {
-		return "", fmt.Errorf("response did not contain %q", field)
+	for _, field := range fields {
+		if token, _ := body[field].(string); token != "" {
+			return token, nil
+		}
 	}
-	return token, nil
+	return "", fmt.Errorf("response did not contain %s", strings.Join(fields, " or "))
 }

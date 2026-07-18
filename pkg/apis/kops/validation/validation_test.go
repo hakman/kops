@@ -2243,8 +2243,9 @@ func TestValidateFileRepository(t *testing.T) {
 			Input: "oci://myregistry.azurecr.io/assets",
 		},
 		{
-			Input:          "oci://registry.example.com/assets",
-			ExpectedErrors: []string{"Forbidden::spec.assets.fileRepository"},
+			// A registry that is not an Azure Container Registry must allow
+			// anonymous pulls, but is valid.
+			Input: "oci://registry.example.com/assets",
 		},
 	}
 	cluster := &kops.Cluster{

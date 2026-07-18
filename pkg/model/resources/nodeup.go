@@ -255,8 +255,9 @@ func (b *NodeUpScript) Build() (fi.Resource, error) {
 }
 
 // ociDownloadFunctions returns a shell function that downloads a blob from an OCI
-// registry, authenticating with the instance identity. Assets stored in OCI
-// registries are addressed by digest, which is the sha256 hash of their content.
+// registry. Assets stored in OCI registries are addressed by digest, which is the
+// sha256 hash of their content. Azure Container Registries are authenticated with
+// the instance identity; other registries must allow anonymous pulls.
 func (b *NodeUpScript) ociDownloadFunctions() (string, error) {
 	if !b.usesOCIAssetRegistry() {
 		return "", nil
@@ -265,8 +266,6 @@ func (b *NodeUpScript) ociDownloadFunctions() (string, error) {
 		return "", fmt.Errorf("OCI asset registry is not supported on cloud provider %q", b.CloudProvider)
 	}
 
-	// Azure Container Registry: exchange a managed-identity token from the instance
-	// metadata service for a registry refresh token, then for a pull-scoped access token.
 	return `
 # Download an OCI blob by digest. args: file, hash, url (oci://<registry>/<repository>)
 download-oci() {
@@ -277,22 +276,49 @@ download-oci() {
   local -r stripped="${url#oci://}"
   local -r registry="${stripped%%/*}"
   local -r repository="${stripped#*/}"
-  local aad_token refresh_token registry_token
+  local -r blob_url="https://${registry}/v2/${repository}/blobs/sha256:${hash}"
+  local token
 
-  if ! aad_token=$(curl -fsS -H "Metadata: true" "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Fmanagement.azure.com%2F" | sed -e 's/.*"access_token":"//' -e 's/".*//'); then
-    echo "== Failed to get an identity token from the instance metadata service =="
-    return 1
-  fi
-  if ! refresh_token=$(curl -fsS "https://${registry}/oauth2/exchange" --data-urlencode "grant_type=access_token" --data-urlencode "service=${registry}" --data-urlencode "access_token=${aad_token}" | sed -e 's/.*"refresh_token":"//' -e 's/".*//'); then
-    echo "== Failed to exchange the identity token for a registry refresh token =="
-    return 1
-  fi
-  if ! registry_token=$(curl -fsS "https://${registry}/oauth2/token" --data-urlencode "grant_type=refresh_token" --data-urlencode "service=${registry}" --data-urlencode "scope=repository:${repository}:pull" --data-urlencode "refresh_token=${refresh_token}" | sed -e 's/.*"access_token":"//' -e 's/".*//'); then
-    echo "== Failed to get a registry access token =="
-    return 1
-  fi
+  case "${registry}" in
+  *.azurecr.io)
+    # Azure Container Registry: exchange a managed-identity token from the instance
+    # metadata service for a registry refresh token, then for a pull-scoped access token.
+    local aad_token refresh_token
+    if ! aad_token=$(curl -fsS -H "Metadata: true" "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Fmanagement.azure.com%2F" | sed -e 's/.*"access_token":"//' -e 's/".*//'); then
+      echo "== Failed to get an identity token from the instance metadata service =="
+      return 1
+    fi
+    if ! refresh_token=$(curl -fsS "https://${registry}/oauth2/exchange" --data-urlencode "grant_type=access_token" --data-urlencode "service=${registry}" --data-urlencode "access_token=${aad_token}" | sed -e 's/.*"refresh_token":"//' -e 's/".*//'); then
+      echo "== Failed to exchange the identity token for a registry refresh token =="
+      return 1
+    fi
+    if ! token=$(curl -fsS "https://${registry}/oauth2/token" --data-urlencode "grant_type=refresh_token" --data-urlencode "service=${registry}" --data-urlencode "scope=repository:${repository}:pull" --data-urlencode "refresh_token=${refresh_token}" | sed -e 's/.*"access_token":"//' -e 's/".*//'); then
+      echo "== Failed to get a registry access token =="
+      return 1
+    fi
+    ;;
+  *)
+    # Public registry: try an anonymous pull; on 401, get an anonymous pull token
+    # from the endpoint advertised in the WWW-Authenticate challenge.
+    if curl -f -Lo "${file}" --connect-timeout 20 --retry 6 --retry-delay 10 "${blob_url}"; then
+      return 0
+    fi
+    local challenge realm service
+    challenge=$(curl -sSI "${blob_url}" | tr -d '\r' | sed -n 's/^[Ww][Ww][Ww]-[Aa]uthenticate: [Bb]earer //p')
+    realm=$(echo "${challenge}" | sed -n 's/.*realm="\([^"]*\)".*/\1/p')
+    service=$(echo "${challenge}" | sed -n 's/.*service="\([^"]*\)".*/\1/p')
+    if [[ -z "${realm}" ]]; then
+      echo "== Failed to get a pull token challenge from ${registry} =="
+      return 1
+    fi
+    if ! token=$(curl -fsS "${realm}?service=${service}&scope=repository:${repository}:pull" | sed -e 's/.*"token":"//' -e 's/".*//'); then
+      echo "== Failed to get an anonymous pull token from ${realm} =="
+      return 1
+    fi
+    ;;
+  esac
 
-  curl -f -Lo "${file}" --connect-timeout 20 --retry 6 --retry-delay 10 -H "Authorization: Bearer ${registry_token}" "https://${registry}/v2/${repository}/blobs/sha256:${hash}"
+  curl -f -Lo "${file}" --connect-timeout 20 --retry 6 --retry-delay 10 -H "Authorization: Bearer ${token}" "${blob_url}"
 }`, nil
 }
 

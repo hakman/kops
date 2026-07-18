@@ -1502,11 +1502,14 @@ spec:
 
 ### fileRepository with an OCI registry (Azure only)
 
-On Azure, `fileRepository` may be an `oci://` URL pointing at an Azure Container Registry.
-File assets (including nodeup) are then stored in the registry as OCI artifacts and downloaded
-by nodes using their managed identity, so no public file server is needed.
+On Azure, `fileRepository` may be an `oci://` URL pointing at an OCI registry. File assets
+(including nodeup) are then stored in the registry as OCI artifacts.
 
-The registry must already exist and the cluster's instances must be granted `AcrPull` on it.
+With an Azure Container Registry (`<name>.azurecr.io`), nodes authenticate using their
+managed identity, so no public file server is needed; the registry must already exist and
+the cluster's instances must be granted `AcrPull` on it. Any other registry must allow
+anonymous pulls of the assets (a public registry).
+
 Run `kops get assets --copy` to push the file assets to the registry before bringing up the
 cluster or applying an update that changes the assets.
 
