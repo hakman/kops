@@ -592,61 +592,70 @@ func (p *S3Path) GetHTTPsUrl(dualstack bool) (string, error) {
 	return endpoint.URI.String(), nil
 }
 
+// s3BucketAPI captures the S3 API calls made by isBucketPublic, so they can be faked in tests.
+type s3BucketAPI interface {
+	GetBucketPolicyStatus(ctx context.Context, params *s3.GetBucketPolicyStatusInput, optFns ...func(*s3.Options)) (*s3.GetBucketPolicyStatusOutput, error)
+	GetBucketOwnershipControls(ctx context.Context, params *s3.GetBucketOwnershipControlsInput, optFns ...func(*s3.Options)) (*s3.GetBucketOwnershipControlsOutput, error)
+}
+
+// IsBucketPublic reports whether AWS considers the bucket's policy public.
 func (p *S3Path) IsBucketPublic(ctx context.Context) (bool, error) {
 	client, err := p.client(ctx)
 	if err != nil {
 		return false, err
 	}
+	return isBucketPublic(ctx, client, p.bucket)
+}
 
+func isBucketPublic(ctx context.Context, client s3BucketAPI, bucket string) (bool, error) {
 	result, err := client.GetBucketPolicyStatus(ctx, &s3.GetBucketPolicyStatusInput{
-		Bucket: aws.String(p.bucket),
+		Bucket: aws.String(bucket),
 	})
-	if err != nil && AWSErrorCode(err) != "NoSuchBucketPolicy" {
-		return false, fmt.Errorf("from AWS S3 GetBucketPolicyStatusWithContext: %w", err)
+	if err != nil {
+		if AWSErrorCode(err) == "NoSuchBucketPolicy" {
+			return false, nil
+		}
+		return false, fmt.Errorf("from AWS S3 GetBucketPolicyStatus: %w", err)
 	}
-	if err == nil && aws.ToBool(result.PolicyStatus.IsPublic) {
+	if result.PolicyStatus == nil || !aws.ToBool(result.PolicyStatus.IsPublic) {
+		return false, nil
+	}
+
+	// A public bucket policy covers only objects owned by the bucket owner. If the bucket still
+	// uses ACLs, objects written from another AWS account need a public-read object ACL to be
+	// anonymously readable. Warn in that case, but keep treating the bucket as public; requiring
+	// the s3:GetBucketOwnershipControls permission would break existing well-configured setups.
+	if usesACLs, err := bucketUsesACLs(ctx, client, bucket); err != nil {
+		klog.V(2).Infof("unable to determine whether bucket %q uses ACLs: %v", bucket, err)
+	} else if usesACLs {
+		klog.Warningf("bucket %q has a public bucket policy, but ACLs are still enabled; objects not owned by the bucket owner need a public-read object ACL to be anonymously readable. Consider setting the bucket's object ownership to BucketOwnerEnforced.", bucket)
+	}
+	return true, nil
+}
+
+// bucketUsesACLs reports whether the bucket's object ownership setting enables ACLs.
+func bucketUsesACLs(ctx context.Context, client s3BucketAPI, bucket string) (bool, error) {
+	ownership, err := client.GetBucketOwnershipControls(ctx, &s3.GetBucketOwnershipControlsInput{
+		Bucket: aws.String(bucket),
+	})
+	if err != nil {
+		if AWSErrorCode(err) == "OwnershipControlsNotFoundError" {
+			// No ownership controls configured: ACLs are enabled (ObjectWriter semantics).
+			return true, nil
+		}
+		return false, err
+	}
+	if ownership.OwnershipControls == nil || len(ownership.OwnershipControls.Rules) == 0 {
 		return true, nil
 	}
+	// ACLs are disabled only when every ownership rule is BucketOwnerEnforced.
+	// S3 currently allows a single rule, but don't rely on that.
+	for _, rule := range ownership.OwnershipControls.Rules {
+		if rule.ObjectOwnership != types.ObjectOwnershipBucketOwnerEnforced {
+			return true, nil
+		}
+	}
 	return false, nil
-
-	// We could check bucket ACLs also...
-
-	// acl, err := client.GetBucketAclWithContext(ctx, &s3.GetBucketAclInput{
-	// 	Bucket: &p.bucket,
-	// })
-	// if err != nil {
-	// 	return false, fmt.Errorf("failed to get ACL for bucket %q: %w", p.bucket, err)
-	// }
-
-	// allowsAnonymousRead := false
-	// for _, grant := range acl.Grants {
-	// 	isAllUsers := false
-
-	// 	switch aws.ToString(grant.Grantee.URI) {
-	// 	case "http://acs.amazonaws.com/groups/global/AllUsers":
-	// 		isAllUsers = true
-	// 	}
-
-	// 	if isAllUsers {
-	// 		permission := aws.ToString(grant.Permission)
-	// 		switch permission {
-	// 		case "FULL_CONTROL":
-	// 			klog.Warningf("bucket %q allows anonymous users full access", p.bucket)
-	// 			allowsAnonymousRead = true
-	// 		case "WRITE", "WRITE_ACP":
-	// 			klog.Warningf("bucket %q allows anonymous users write access", p.bucket)
-	// 			// it's not _read_ access
-	// 		case "READ":
-	// 			allowsAnonymousRead = true
-	// 		case "READ_ACP":
-	// 			// does not grant read
-	// 		default:
-	// 			klog.Warningf("bucket %q has unknown permission %q for anonymous access", p.bucket, permission)
-	// 		}
-	// 	}
-	// }
-
-	// return allowsAnonymousRead, nil
 }
 
 func (p *S3Path) IsPublic() (bool, error) {

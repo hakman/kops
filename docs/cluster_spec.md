@@ -1590,6 +1590,17 @@ The `enableAWSOIDCProvider` configures AWS to trust the service account issuer t
 authenticate service accounts for IAM Roles for Service Accounts (IRSA). In order for this to work,
 the service account issuer discovery URL must be publicly readable.
 
+When the discovery store is an S3 bucket, the recommended configuration is to grant public
+read access to the published objects through a bucket policy and to disable ACLs by setting
+the bucket's object ownership setting to `BucketOwnerEnforced`.
+
+kOps checks whether the bucket has a public bucket policy and, if not, sets a `public-read`
+ACL on the published objects. This check requires the principal running kOps to have the
+`s3:GetBucketPolicyStatus` permission on the bucket. Note that a public bucket policy may
+not be sufficient if the bucket still has ACLs enabled: the bucket policy does not cover
+objects owned by a different account than the bucket owner. kOps warns about this
+configuration if the principal has the `s3:GetBucketOwnershipControls` permission on the bucket.
+
 ### IAM roles for addons
 
 Most kOps addons that interact with the AWS API can use dedicated IAM roles. To enable this, add the following:
