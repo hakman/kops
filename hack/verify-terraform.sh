@@ -26,7 +26,7 @@ TF_TAG=1.14.8
 PROVIDER_CACHE="${KOPS_ROOT}/.cache/terraform"
 FIXTURES="${KOPS_ROOT}/tests/integration/update_cluster"
 
-# Number of "terraform validate" runs to execute concurrently
+# Number of concurrent "terraform validate" runs
 PARALLEL="${PARALLEL:-8}"
 
 tf_docker() {
@@ -43,10 +43,8 @@ tf_docker() {
     "$@"
 }
 
-# Identifier for the exact provider requirements of a test dir, e.g.
-# "hashicorpaws-hashicorpgoogle-2381116941". Dirs may share an init'ed
-# .terraform only when both provider sources and version constraints match,
-# so the version constraints are folded in as a checksum.
+# Key for a test dir's provider requirements, e.g. "hashicorpaws-hashicorpgoogle-2381116941".
+# Dirs share an init'ed .terraform only when both provider sources and version constraints match.
 provider_key() {
   local requirements
   requirements="$(grep -hE '"(source|version)"' "$1"/kubernetes.tf* | tr -s ' ' | sort -u)"
@@ -73,7 +71,7 @@ validate_one() {
 
 # Worker mode, used by the xargs fan-out below.
 if [ "${1:-}" = "--validate-one" ]; then
-  # GNU xargs invokes the command once even when there is no input at all.
+  # GNU xargs runs the command once even with no input.
   [ "$#" -eq 3 ] || exit 0
   validate_one "$3" "$2/$(provider_key "$3")"
   exit
@@ -82,7 +80,7 @@ fi
 # Optional: pass a substring to filter test directories by name
 DIR_FILTER="${1:-}"
 
-# Holds one init'ed .terraform directory and lock file per unique provider set
+# One init'ed .terraform directory and lock file per unique provider set
 SEED_ROOT="$(mktemp -d)"
 kube::util::trap_add 'rm -rf "${SEED_ROOT}"' EXIT
 
@@ -90,12 +88,10 @@ mkdir -p "${PROVIDER_CACHE}"
 
 RC=0
 
-# Enumerate the test dirs, run the static ARN checks, and run the expensive
-# "terraform init" (registry round trips) once per unique provider set,
-# stashing the resulting .terraform directory and lock file for reuse by every
-# dir with the same set. All seed inits must finish before any validate
-# starts: "init -upgrade" rewrites provider binaries in TF_PLUGIN_CACHE_DIR,
-# which fails with "text file busy" if a concurrent validate is executing them.
+# Init providers once per unique provider set, stashing the .terraform dir and lock file for reuse
+# by every test dir with the same set. All seed inits must finish before any validate starts:
+# "init -upgrade" rewrites provider binaries in TF_PLUGIN_CACHE_DIR, which fails with
+# "text file busy" if a concurrent validate is executing them.
 TEST_DIRS=()
 for test_dir in "${FIXTURES}"/*/; do
   test_dir="${test_dir%/}"
