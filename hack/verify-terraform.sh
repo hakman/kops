@@ -43,14 +43,11 @@ tf_docker() {
     "$@"
 }
 
-# Key for a test dir's provider requirements, e.g. "hashicorpaws-hashicorpgoogle-2381116941".
-# Dirs share an init'ed .terraform only when both provider sources and version constraints match.
+# Key for the set of providers a test dir uses, e.g. "hashicorpaws-hashicorpgoogle". Version
+# constraints are uniform across the generated fixtures, so dirs sharing sources share a seed.
 provider_key() {
-  local requirements
-  requirements="$(grep -hE '"(source|version)"' "$1"/kubernetes.tf* | tr -s ' ' | sort -u)"
-  printf '%s-%s' \
-    "$(grep -o '"[a-z0-9-]*/[a-z0-9-]*"' <<<"${requirements}" | sort -u | tr -cd 'a-z0-9\n' | paste -sd- -)" \
-    "$(cksum <<<"${requirements}" | cut -d' ' -f1)"
+  grep -h '"source"' "$1"/kubernetes.tf* |
+    grep -o '"[a-z0-9-]*/[a-z0-9-]*"' | sort -u | tr -cd 'a-z0-9\n' | paste -sd- -
 }
 
 validate_one() {
