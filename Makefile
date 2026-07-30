@@ -56,7 +56,9 @@ unexport AZURE_CLIENT_ID AZURE_CLIENT_SECRET AZURE_SUBSCRIPTION_ID AZURE_TENANT_
 VERSION=$(shell tools/get_version.sh | grep VERSION | awk '{print $$2}')
 export VERSION
 
-IMAGE_TAG=$(shell tools/get_version.sh | grep IMAGE_TAG | awk '{print $$2}')
+# IMAGE_TAG is VERSION with + replaced by -, matching kops.KopsVersionImageTag().
+# Derived in make because GNU make < 4.4 does not pass a VERSION= override into $(shell ...).
+IMAGE_TAG=$(subst +,-,$(VERSION))
 
 KOPS_CI_VERSION:=$(shell grep 'KOPS_CI_VERSION\s*=' kops-version.go | awk '{print $$3}' | sed -e 's_"__g')
 
