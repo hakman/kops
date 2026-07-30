@@ -180,7 +180,7 @@ func writeFile(ctx context.Context, cluster *kops.Cluster, p vfs.Path, data []by
 // store prefix.
 func buildVFSPath(target string) (string, error) {
 	if !strings.Contains(target, "://") || strings.HasPrefix(target, "memfs://") || strings.HasPrefix(target, "file://") ||
-		strings.HasPrefix(target, "gs://") {
+		strings.HasPrefix(target, "gs://") || strings.HasPrefix(target, "s3://") {
 		return target, nil
 	}
 
@@ -188,7 +188,8 @@ func buildVFSPath(target string) (string, error) {
 
 	// Matches all S3 regional naming conventions:
 	// https://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region
-	// and converts to a s3://<bucket>/<path> vfsPath
+	// and converts to a s3://<bucket>/<path> vfsPath. The s3:// form itself was already passed
+	// through above.
 	s3VfsPath, err := vfs.VFSPath(target)
 	if err == nil {
 		vfsPath = s3VfsPath
@@ -207,7 +208,7 @@ func buildVFSPath(target string) (string, error) {
 	if vfsPath == "" {
 		klog.Errorf("Unable to determine VFS path from supplied URL: %s", target)
 		klog.Errorf("S3, Google Cloud Storage, and File Paths are supported.")
-		klog.Errorf("For S3, please make sure that the supplied file repository URL adhere to S3 naming conventions, https://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region.")
+		klog.Errorf("For S3, please make sure that the supplied file repository URL starts with s3:// or adheres to S3 naming conventions, https://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region.")
 		klog.Errorf("For GCS, please make sure that the supplied file repository URL starts with gs:// or https://storage.googleapis.com/")
 		if err != nil { // print the S3 error for more details
 			return "", fmt.Errorf("Error Details: %v", err)

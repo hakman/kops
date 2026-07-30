@@ -20,6 +20,7 @@ import (
 	"bufio"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/base64"
 	"fmt"
 	"mime/multipart"
@@ -38,6 +39,7 @@ import (
 	"k8s.io/kops/upup/pkg/fi/cloudup/awsup"
 	"k8s.io/kops/upup/pkg/fi/utils"
 	"k8s.io/kops/util/pkg/architectures"
+	"k8s.io/kops/util/pkg/vfs"
 	"k8s.io/kops/util/pkg/vfs/openstackconfig"
 )
 
@@ -95,6 +97,29 @@ download-or-bust() {
       if ! token=$(curl -s -f --noproxy '*' --connect-timeout 2 --max-time 5 -H 'Metadata-Flavor: Google' "${metadata_server}/computeMetadata/v1/instance/service-accounts/default/token" | grep -o '"access_token" *: *"[^"]*"' | cut -d '"' -f 4); then
         echo "== Failed to get a service account token =="
       elif ! echo "Authorization: Bearer ${token}" | curl -f -Lo "${file}" --connect-timeout 20 --retry 6 --retry-delay 10 -H @- "https://storage.googleapis.com/${url#gs://}"; then
+        echo "== Failed to download ${url} =="
+      elif ! validate-hash "${file}" "${hash}"; then
+        echo "== Failed to validate hash for ${url} =="
+        rm -f "${file}"
+      else
+        echo "== Downloaded ${url} with hash ${hash} =="
+        return 0
+      fi
+{{- else if UseS3Download }}
+      # Use the IP of the metadata server, to not depend on DNS this early in boot
+      local imds_server="http://169.254.169.254"
+      local imds_token profile creds
+      echo "== Downloading ${url} =="
+      # Pipe the instance profile credentials to curl, to keep them out of the logs. The static
+      # x-amz-content-sha256 header (the hash of the empty body) is required by S3, but is only
+      # added automatically by curl >= 8.0.
+      if ! imds_token=$(curl -s -f -X PUT --noproxy '*' --connect-timeout 2 --max-time 5 -H 'X-aws-ec2-metadata-token-ttl-seconds: 60' "${imds_server}/latest/api/token"); then
+        echo "== Failed to get an IMDS token =="
+      elif ! profile=$(curl -s -f --noproxy '*' --connect-timeout 2 --max-time 5 -H "X-aws-ec2-metadata-token: ${imds_token}" "${imds_server}/latest/meta-data/iam/security-credentials/" | head -n 1); then
+        echo "== Failed to get the instance profile name =="
+      elif ! creds=$(curl -s -f --noproxy '*' --connect-timeout 2 --max-time 5 -H "X-aws-ec2-metadata-token: ${imds_token}" "${imds_server}/latest/meta-data/iam/security-credentials/${profile}"); then
+        echo "== Failed to get the instance profile credentials =="
+      elif ! printf 'user "%s:%s"\nheader "x-amz-security-token: %s"\nheader "x-amz-content-sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"\n' "$(echo "${creds}" | grep -o '"AccessKeyId" *: *"[^"]*"' | cut -d '"' -f 4)" "$(echo "${creds}" | grep -o '"SecretAccessKey" *: *"[^"]*"' | cut -d '"' -f 4)" "$(echo "${creds}" | grep -o '"Token" *: *"[^"]*"' | cut -d '"' -f 4)" | curl -f -Lo "${file}" --connect-timeout 20 --retry 6 --retry-delay 10 --config - --aws-sigv4 "aws:amz:{{ S3Region }}:s3" "https://s3.{{ S3Region }}.amazonaws.com/${url#s3://}"; then
         echo "== Failed to download ${url} =="
       elif ! validate-hash "${file}" "${hash}"; then
         echo "== Failed to validate hash for ${url} =="
@@ -204,6 +229,11 @@ type NodeUpScript struct {
 	CloudProvider        string
 	ProxyEnv             func() (string, error)
 	EnvironmentVariables func() (string, error)
+
+	// S3Region is the region of the S3 bucket that nodeup is downloaded from, set by
+	// ResolveS3Region. The s3:// form of the download URLs does not carry the region, and the
+	// nodes cannot look it up without credentials, so it is baked into the bootstrap script.
+	S3Region string
 }
 
 func funcEmptyString() (string, error) {
@@ -271,6 +301,14 @@ func (b *NodeUpScript) Build() (fi.Resource, error) {
 		"EnvironmentVariables": b.EnvironmentVariables,
 
 		"UseGCSDownload": b.useGCSDownload,
+		"UseS3Download":  b.useS3Download,
+
+		"S3Region": func() (string, error) {
+			if b.S3Region == "" {
+				return "", fmt.Errorf("ResolveS3Region must be called before building a nodeup script with an s3:// source")
+			}
+			return b.S3Region, nil
+		},
 	}
 
 	return newTemplateResource("nodeup", nodeUpTemplate, functions, nil)
@@ -290,6 +328,54 @@ func (b *NodeUpScript) useGCSDownload() bool {
 		}
 	}
 	return false
+}
+
+// s3Location returns the first s3:// URL that nodeup is downloaded from, or "" if there is none.
+func (b *NodeUpScript) s3Location() string {
+	for _, arch := range architectures.GetSupported() {
+		asset := b.NodeUpAssets[arch]
+		if asset == nil {
+			continue
+		}
+		for _, location := range asset.Locations {
+			if strings.HasPrefix(location, "s3://") {
+				return location
+			}
+		}
+	}
+	return ""
+}
+
+// useS3Download reports whether nodeup is downloaded from an S3 bucket, which has to be done with
+// the credentials of the instance profile, so it is only supported on AWS.
+func (b *NodeUpScript) useS3Download() bool {
+	return b.CloudProvider == string(kops.CloudProviderAWS) && b.s3Location() != ""
+}
+
+// ResolveS3Region looks up the region of the S3 bucket that nodeup is downloaded from, so that
+// the bootstrap script signs its download requests for the right region.
+func (b *NodeUpScript) ResolveS3Region(ctx context.Context, vfsContext *vfs.VFSContext) error {
+	if !b.useS3Download() {
+		return nil
+	}
+	location := b.s3Location()
+	p, err := vfsContext.BuildVfsPath(location)
+	if err != nil {
+		return fmt.Errorf("building path for %q: %w", location, err)
+	}
+	s3Path, ok := p.(*vfs.S3Path)
+	if !ok {
+		return fmt.Errorf("unexpected path type %T for %q", p, location)
+	}
+	b.S3Region, err = s3Path.Region(ctx)
+	if err != nil {
+		return fmt.Errorf("getting the region of %q: %w", location, err)
+	}
+	// The bootstrap script uses the s3.<region>.amazonaws.com endpoint form.
+	if strings.HasPrefix(b.S3Region, "cn-") {
+		return fmt.Errorf("downloading nodeup from an s3:// URL is not supported in the AWS China partition")
+	}
+	return nil
 }
 
 func gzipBase64(data string) (string, error) {

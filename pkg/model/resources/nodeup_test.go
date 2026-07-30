@@ -91,7 +91,96 @@ func Test_GCSDownload(t *testing.T) {
 	}
 }
 
-// verifyShellSyntax parses the rendered script with bash, as the GCS download has no golden file.
+func Test_S3Download(t *testing.T) {
+	// The authenticated S3 download is rendered only for AWS clusters with s3:// nodeup sources.
+	s3Marker := "--aws-sigv4"
+	standardMarker := "wget --compression=auto"
+
+	nodeUpAssets := func(location string) map[architectures.Architecture]*assets.MirroredAsset {
+		return map[architectures.Architecture]*assets.MirroredAsset{
+			architectures.ArchitectureAmd64: {
+				Locations: []string{location},
+				Hash:      hashing.MustFromString("9acf6a83b249649354bb15b04250fabce0f8ff2377f2f0d4788e3fdda3f572a3"),
+			},
+		}
+	}
+
+	for _, tc := range []struct {
+		name          string
+		cloudProvider string
+		location      string
+		expectS3      bool
+	}{
+		{
+			name:          "s3 source",
+			cloudProvider: "aws",
+			location:      "s3://artifact-bucket/kops/1.34.0/linux/amd64/nodeup",
+			expectS3:      true,
+		},
+		{
+			name:          "default https source",
+			cloudProvider: "aws",
+			location:      "https://artifacts.k8s.io/binaries/kops/1.34.0/linux/amd64/nodeup",
+			expectS3:      false,
+		},
+		{
+			// The authenticated S3 download uses the instance profile from the EC2 metadata
+			// service, which only exists on AWS.
+			name:          "s3 source on another cloud provider",
+			cloudProvider: "hetzner",
+			location:      "s3://artifact-bucket/kops/1.34.0/linux/amd64/nodeup",
+			expectS3:      false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			script := &NodeUpScript{
+				CloudProvider: tc.cloudProvider,
+				NodeUpAssets:  nodeUpAssets(tc.location),
+				S3Region:      "us-east-2",
+			}
+			resource, err := script.Build()
+			if err != nil {
+				t.Fatalf("building nodeup script: %v", err)
+			}
+			rendered, err := fi.ResourceAsString(resource)
+			if err != nil {
+				t.Fatalf("rendering nodeup script: %v", err)
+			}
+			if got := strings.Contains(rendered, s3Marker); got != tc.expectS3 {
+				t.Errorf("authenticated S3 download rendered=%v, expected %v", got, tc.expectS3)
+			}
+			if tc.expectS3 && !strings.Contains(rendered, "https://s3.us-east-2.amazonaws.com/") {
+				t.Errorf("authenticated S3 download does not use the bucket region")
+			}
+			if got := strings.Contains(rendered, standardMarker); got != !tc.expectS3 {
+				t.Errorf("standard download commands rendered=%v, expected %v", got, !tc.expectS3)
+			}
+			verifyShellSyntax(t, rendered)
+		})
+	}
+}
+
+func Test_S3DownloadRequiresRegion(t *testing.T) {
+	script := &NodeUpScript{
+		CloudProvider: "aws",
+		NodeUpAssets: map[architectures.Architecture]*assets.MirroredAsset{
+			architectures.ArchitectureAmd64: {
+				Locations: []string{"s3://artifact-bucket/kops/1.34.0/linux/amd64/nodeup"},
+				Hash:      hashing.MustFromString("9acf6a83b249649354bb15b04250fabce0f8ff2377f2f0d4788e3fdda3f572a3"),
+			},
+		},
+	}
+	resource, err := script.Build()
+	if err != nil {
+		t.Fatalf("building nodeup script: %v", err)
+	}
+	if _, err := fi.ResourceAsString(resource); err == nil {
+		t.Errorf("expected an error rendering an s3:// nodeup script without a resolved region")
+	}
+}
+
+// verifyShellSyntax parses the rendered script with bash, as the authenticated downloads have no
+// golden files.
 func verifyShellSyntax(t *testing.T, script string) {
 	t.Helper()
 

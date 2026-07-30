@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"k8s.io/klog/v2"
@@ -302,9 +303,9 @@ func (d *deployer) env() []string {
 	}
 
 	if d.KopsBaseURL != "" {
-		vars = append(vars, fmt.Sprintf("KOPS_BASE_URL=%v", d.maybeGSURL(d.KopsBaseURL)))
+		vars = append(vars, fmt.Sprintf("KOPS_BASE_URL=%v", d.canonicalizeBaseURL(d.KopsBaseURL)))
 	} else if baseURL := os.Getenv("KOPS_BASE_URL"); baseURL != "" {
-		vars = append(vars, fmt.Sprintf("KOPS_BASE_URL=%v", d.maybeGSURL(baseURL)))
+		vars = append(vars, fmt.Sprintf("KOPS_BASE_URL=%v", d.canonicalizeBaseURL(baseURL)))
 	}
 
 	if kopsBin := d.resolvedKopsBinaryPath(); kopsBin != "" {
@@ -339,15 +340,27 @@ func (d *deployer) env() []string {
 // gcsPublicPrefix is the https form of a GCS bucket, as used for the staged build artifacts.
 const gcsPublicPrefix = "https://storage.googleapis.com/"
 
-// maybeGSURL converts baseURL from the public GCS https form to the gs:// form on GCE, so that
-// nodes download the staged artifacts with their instance service-account credentials. Any other
-// URL, and any other cloud provider, passes through unchanged. Only kops invocations get the gs://
+// s3PublicURLPattern matches the virtual-hosted https forms of an S3 bucket, with an optional
+// region.
+var s3PublicURLPattern = regexp.MustCompile(`^https://([a-z0-9.-]+)\.s3(?:\.[a-z0-9-]+)?\.amazonaws\.com/`)
+
+// canonicalizeBaseURL converts baseURL from the public https form of a storage bucket to the
+// bucket-native form on the cloud provider that can authenticate to it (gs:// on GCE, s3:// on
+// AWS), so that nodes download the staged artifacts with their instance credentials. Any other URL,
+// and any other cloud provider, passes through unchanged. Only kops invocations get the converted
 // form; the scripts that download the kops binary run outside the deployer and keep using https.
-func (d *deployer) maybeGSURL(baseURL string) string {
-	if d.CloudProvider != "gce" || !strings.HasPrefix(baseURL, gcsPublicPrefix) {
-		return baseURL
+func (d *deployer) canonicalizeBaseURL(baseURL string) string {
+	switch d.CloudProvider {
+	case "gce":
+		if strings.HasPrefix(baseURL, gcsPublicPrefix) {
+			return "gs://" + strings.TrimPrefix(baseURL, gcsPublicPrefix)
+		}
+	case "aws":
+		if m := s3PublicURLPattern.FindStringSubmatch(baseURL); m != nil {
+			return "s3://" + m[1] + "/" + strings.TrimPrefix(baseURL, m[0])
+		}
 	}
-	return "gs://" + strings.TrimPrefix(baseURL, gcsPublicPrefix)
+	return baseURL
 }
 
 // featureFlags returns the kops feature flags to set
