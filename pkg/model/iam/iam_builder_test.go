@@ -18,7 +18,9 @@ package iam
 
 import (
 	"encoding/json"
+	"fmt"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -342,7 +344,7 @@ func TestAddKarpenterPermissions(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			p := NewPolicy("c.example.com", "aws", "us-east-1")
-			if err := AddKarpenterPermissions(p, tc.useCustomInstanceProfiles); err != nil {
+			if err := AddKarpenterPermissions(p, tc.useCustomInstanceProfiles, false); err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
 
@@ -363,6 +365,39 @@ func TestAddKarpenterPermissions(t *testing.T) {
 			}
 			if _, ok := passRole.Condition["StringEquals"]; !ok {
 				t.Errorf("iam:PassRole statement missing StringEquals condition")
+			}
+		})
+	}
+}
+
+func TestAddKarpenterPermissionsCustomerManagedKeys(t *testing.T) {
+	for _, useCustomerManagedKeys := range []bool{false, true} {
+		t.Run(fmt.Sprintf("useCustomerManagedKeys=%v", useCustomerManagedKeys), func(t *testing.T) {
+			p := NewPolicy("c.example.com", "aws", "us-east-1")
+			if err := AddKarpenterPermissions(p, false, useCustomerManagedKeys); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			policy, err := p.AsJSON()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			for _, action := range []string{
+				"kms:CreateGrant",
+				"kms:Decrypt",
+				"kms:DescribeKey",
+				"kms:GenerateDataKeyWithoutPlaintext",
+				"kms:ReEncrypt*",
+			} {
+				if got := strings.Contains(policy, action); got != useCustomerManagedKeys {
+					t.Errorf("policy contains %q = %v, want %v", action, got, useCustomerManagedKeys)
+				}
+			}
+			if useCustomerManagedKeys && !strings.Contains(policy, "kms:GrantIsForAWSResource") {
+				t.Errorf("kms:CreateGrant is not conditioned on kms:GrantIsForAWSResource")
+			}
+			if useCustomerManagedKeys && !strings.Contains(policy, "ec2.us-east-1.amazonaws.com") {
+				t.Errorf("KMS data plane actions are not conditioned on kms:ViaService")
 			}
 		})
 	}

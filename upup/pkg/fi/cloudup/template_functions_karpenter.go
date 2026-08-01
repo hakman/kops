@@ -316,8 +316,9 @@ func buildKarpenterBlockDeviceMappings(ig *kops.InstanceGroup, rootDeviceName st
 			encryption = fi.ValueOf(rootVolume.Encryption)
 		}
 		// As in the ASG path, the key is only honoured when encryption is set
-		// explicitly, not when it is merely defaulted to true.
-		if fi.ValueOf(rootVolume.Encryption) && rootVolume.EncryptionKey != nil {
+		// explicitly, not when it is merely defaulted to true, and an empty key is
+		// dropped rather than sent to EC2 as an invalid key identifier.
+		if fi.ValueOf(rootVolume.Encryption) && fi.ValueOf(rootVolume.EncryptionKey) != "" {
 			encryptionKey = rootVolume.EncryptionKey
 		}
 		iops = rootVolume.IOPS

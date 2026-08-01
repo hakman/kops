@@ -1097,10 +1097,38 @@ func AddClusterAutoscalerPermissions(p *Policy, useStaticInstanceList bool) {
 // Karpenter never creates or mutates instance profiles.
 // useCustomInstanceProfiles indicates that instance groups use custom IAM instance profiles,
 // which contain roles with names that kOps cannot predict.
-func AddKarpenterPermissions(p *Policy, useCustomInstanceProfiles bool) error {
+// useCustomerManagedKeys indicates that instance groups encrypt their root volume with a
+// customer managed KMS key, which Karpenter has to be authorized to use.
+func AddKarpenterPermissions(p *Policy, useCustomInstanceProfiles bool, useCustomerManagedKeys bool) error {
 	ec2Service, err := IAMServiceEC2(p.region)
 	if err != nil {
 		return err
+	}
+
+	// Launching an instance whose root volume is encrypted with a customer managed key
+	// requires the launching principal to be authorized on that key. EC2 decrypts the volume
+	// and creates the grant on Karpenter's behalf, so unlike the EBS CSI driver these calls do
+	// carry kms:ViaService and kms:GrantIsForAWSResource. Upstream Karpenter has no equivalent
+	// statement, as it does not generate block device mappings.
+	// The key policy has to allow this role as well, either by naming it or by delegating to
+	// IAM; kOps does not manage the key policy.
+	if useCustomerManagedKeys {
+		p.kmsDataPlaneAction.Insert(
+			"kms:Decrypt",
+			"kms:DescribeKey",
+			"kms:GenerateDataKeyWithoutPlaintext",
+			"kms:ReEncrypt*",
+		)
+		p.Statement = append(p.Statement, &Statement{
+			Effect:   StatementEffectAllow,
+			Action:   stringorset.String("kms:CreateGrant"),
+			Resource: stringorset.String("*"),
+			Condition: Condition{
+				"Bool": map[string]string{
+					"kms:GrantIsForAWSResource": "true",
+				},
+			},
+		})
 	}
 
 	// AllowRegionalReadActions, AllowSSMReadActions, AllowPricingReadActions and
