@@ -25,8 +25,8 @@ import (
 )
 
 func newAzureClient(ctx context.Context, accountName string) (*azblob.Client, error) {
-	if accountName == "" {
-		return nil, fmt.Errorf("Azure storage account name is required")
+	if !IsValidAzureStorageAccountName(accountName) {
+		return nil, fmt.Errorf("invalid Azure storage account name %q; expected 3-24 lowercase letters or numbers", accountName)
 	}
 
 	url := fmt.Sprintf("https://%s.blob.core.windows.net/", accountName)

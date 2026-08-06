@@ -2310,6 +2310,16 @@ func TestValidateFileRepository(t *testing.T) {
 			CloudProvider: kops.CloudProviderAzure,
 		},
 		{
+			Input:          "azureblob://bad;account/assets/kops",
+			CloudProvider:  kops.CloudProviderAzure,
+			ExpectedErrors: []string{"Invalid value::spec.assets.fileRepository"},
+		},
+		{
+			Input:          "azureblob://UPPERCASE/assets/kops",
+			CloudProvider:  kops.CloudProviderAzure,
+			ExpectedErrors: []string{"Invalid value::spec.assets.fileRepository"},
+		},
+		{
 			Input:          "azureblob://exampleaccount/assets/kops",
 			CloudProvider:  kops.CloudProviderGCE,
 			ExpectedErrors: []string{"Invalid value::spec.assets.fileRepository"},

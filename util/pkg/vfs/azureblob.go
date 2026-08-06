@@ -58,6 +58,19 @@ func NewAzureBlobPath(vfsContext *VFSContext, account string, container string, 
 	}
 }
 
+// IsValidAzureStorageAccountName reports whether name follows the Azure storage account naming rules.
+func IsValidAzureStorageAccountName(name string) bool {
+	if len(name) < 3 || len(name) > 24 {
+		return false
+	}
+	for _, c := range name {
+		if (c < 'a' || c > 'z') && (c < '0' || c > '9') {
+			return false
+		}
+	}
+	return true
+}
+
 // Account returns the Azure storage account name.
 func (p *AzureBlobPath) Account() string {
 	return p.account
@@ -126,28 +139,10 @@ func (p *AzureBlobPath) Join(relativePath ...string) Path {
 
 // ReadFile returns the content of the blob.
 func (p *AzureBlobPath) ReadFile(ctx context.Context) ([]byte, error) {
-	klog.V(8).Infof("Reading file: %s", p)
-
-	client, err := p.getClient(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	get, err := client.DownloadStream(ctx, p.container, p.key, nil)
-	if err != nil {
-		if bloberror.HasCode(err, bloberror.ContainerNotFound) || bloberror.HasCode(err, bloberror.BlobNotFound) {
-			return nil, os.ErrNotExist
-		}
-		return nil, err
-	}
-
 	b := &bytes.Buffer{}
-	retryReader := get.NewRetryReader(ctx, &azblob.RetryReaderOptions{})
-	_, err = b.ReadFrom(retryReader)
-	if err != nil {
+	if _, err := p.WriteToWithContext(ctx, b); err != nil {
 		return nil, err
 	}
-
 	return b.Bytes(), nil
 }
 
@@ -160,19 +155,25 @@ func (p *AzureBlobPath) WriteTo(w io.Writer) (int64, error) {
 
 // WriteToWithContext writes the content of the blob to the writer, with the given context.
 func (p *AzureBlobPath) WriteToWithContext(ctx context.Context, w io.Writer) (int64, error) {
-	klog.V(8).Infof("Writing to: %s", p)
+	klog.V(8).Infof("Reading file: %s", p)
 
-	b, err := p.ReadFile(ctx)
+	client, err := p.getClient(ctx)
 	if err != nil {
 		return 0, err
 	}
 
-	n, err := w.Write(b)
+	get, err := client.DownloadStream(ctx, p.container, p.key, nil)
 	if err != nil {
+		if bloberror.HasCode(err, bloberror.ContainerNotFound) || bloberror.HasCode(err, bloberror.BlobNotFound) {
+			return 0, os.ErrNotExist
+		}
 		return 0, err
 	}
 
-	return int64(n), err
+	retryReader := get.NewRetryReader(ctx, &azblob.RetryReaderOptions{})
+	defer retryReader.Close()
+
+	return io.Copy(w, retryReader)
 }
 
 // createFileLockAzureBLob prevents concurrent creates on the same

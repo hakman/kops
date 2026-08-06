@@ -17,9 +17,39 @@ limitations under the License.
 package vfs
 
 import (
+	"bytes"
+	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"sync"
 	"testing"
+	"time"
+
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
 )
+
+func TestIsValidAzureStorageAccountName(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		valid bool
+	}{
+		{name: "abc", valid: true},
+		{name: "account123", valid: true},
+		{name: "abcdefghijklmnopqrstuvwx", valid: true},
+		{name: "ab"},
+		{name: "abcdefghijklmnopqrstuvwxy"},
+		{name: "UPPERCASE"},
+		{name: "bad-account"},
+		{name: "bad;account"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := IsValidAzureStorageAccountName(tc.name); got != tc.valid {
+				t.Errorf("IsValidAzureStorageAccountName(%q) = %v, expected %v", tc.name, got, tc.valid)
+			}
+		})
+	}
+}
 
 func TestAzureBlobPathBase(t *testing.T) {
 	testCases := []struct {
@@ -131,6 +161,10 @@ func TestBuildAzureBlobPath(t *testing.T) {
 			input:   "azureblob://account/",
 			wantErr: true,
 		},
+		{
+			input:   "azureblob://bad;account/container/key",
+			wantErr: true,
+		},
 	}
 	c := &VFSContext{}
 	for _, tc := range testCases {
@@ -155,5 +189,78 @@ func TestBuildAzureBlobPath(t *testing.T) {
 				t.Errorf("key: expected %q, got %q", tc.key, p.key)
 			}
 		})
+	}
+}
+
+type firstWriteBuffer struct {
+	buffer     bytes.Buffer
+	once       sync.Once
+	firstWrite chan struct{}
+}
+
+func (w *firstWriteBuffer) Write(p []byte) (int, error) {
+	w.once.Do(func() { close(w.firstWrite) })
+	return w.buffer.Write(p)
+}
+
+func TestAzureBlobPathWriteToStreams(t *testing.T) {
+	firstChunk := []byte("first chunk")
+	secondChunk := []byte("second chunk")
+	firstChunkSent := make(chan struct{})
+	releaseResponse := make(chan struct{})
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(firstChunk)
+		w.(http.Flusher).Flush()
+		close(firstChunkSent)
+		<-releaseResponse
+		_, _ = w.Write(secondChunk)
+	}))
+	defer server.Close()
+	released := false
+	defer func() {
+		if !released {
+			close(releaseResponse)
+		}
+	}()
+
+	client, err := azblob.NewClientWithNoCredential(server.URL, nil)
+	if err != nil {
+		t.Fatalf("creating Azure Blob client: %v", err)
+	}
+	vfsContext := NewVFSContext()
+	vfsContext.azureClients = map[string]*azblob.Client{"account": client}
+	p := NewAzureBlobPath(vfsContext, "account", "container", "key")
+	w := &firstWriteBuffer{firstWrite: make(chan struct{})}
+
+	type result struct {
+		n   int64
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		n, err := p.WriteToWithContext(context.Background(), w)
+		done <- result{n: n, err: err}
+	}()
+
+	<-firstChunkSent
+	select {
+	case <-w.firstWrite:
+	case <-time.After(5 * time.Second):
+		t.Fatal("destination did not receive data before the blob response completed")
+	}
+
+	close(releaseResponse)
+	released = true
+	r := <-done
+	if r.err != nil {
+		t.Fatalf("streaming Azure Blob content: %v", r.err)
+	}
+	expected := append(firstChunk, secondChunk...)
+	if r.n != int64(len(expected)) {
+		t.Errorf("wrote %d bytes, expected %d", r.n, len(expected))
+	}
+	if !bytes.Equal(w.buffer.Bytes(), expected) {
+		t.Errorf("wrote %q, expected %q", w.buffer.Bytes(), expected)
 	}
 }

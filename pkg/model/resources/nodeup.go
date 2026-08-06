@@ -336,6 +336,9 @@ func escapeBlobLocation(location string) (string, error) {
 	if u.Scheme != "azureblob" || u.Host == "" || u.Hostname() != u.Host || u.User != nil || u.RawQuery != "" || u.Fragment != "" || container == "" || key == "" {
 		return "", fmt.Errorf("invalid Azure Blob location; expected azureblob://<account>/<container>/<key>")
 	}
+	if !vfs.IsValidAzureStorageAccountName(u.Host) {
+		return "", fmt.Errorf("invalid Azure Blob storage account name %q; expected 3-24 lowercase letters or numbers", u.Host)
+	}
 
 	return "azureblob://" + u.Host + httpbinding.EscapePath(u.Path, false), nil
 }

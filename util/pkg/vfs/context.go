@@ -573,6 +573,9 @@ func (c *VFSContext) buildAzureBlobPath(p string) (*AzureBlobPath, error) {
 	if account == "" {
 		return nil, fmt.Errorf("no storage account specified in %q; expected azureblob://<account>/<container>/<key>", p)
 	}
+	if !IsValidAzureStorageAccountName(account) {
+		return nil, fmt.Errorf("invalid Azure storage account name %q; expected 3-24 lowercase letters or numbers", account)
+	}
 
 	rest := strings.TrimPrefix(u.Path, "/")
 	container, key, _ := strings.Cut(rest, "/")

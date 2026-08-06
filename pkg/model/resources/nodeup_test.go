@@ -264,6 +264,16 @@ func TestEscapeAzureBlobLocation(t *testing.T) {
 			location:  "azureblob://exampleaccount/assets/kops/nodeup?sig=secret",
 			expectErr: true,
 		},
+		{
+			name:      "shell metacharacter in account",
+			location:  "azureblob://bad;account/assets/kops/nodeup",
+			expectErr: true,
+		},
+		{
+			name:      "uppercase account",
+			location:  "azureblob://UPPERCASE/assets/kops/nodeup",
+			expectErr: true,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			actual, err := escapeBlobLocation(tc.location)

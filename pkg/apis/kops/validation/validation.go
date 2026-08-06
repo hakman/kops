@@ -811,6 +811,9 @@ func validateFileRepository(s string, fieldPath *field.Path, cloudProvider kops.
 		if cloudProvider != kops.CloudProviderAzure {
 			allErrs = append(allErrs, field.Invalid(fieldPath, s, fmt.Sprintf("azureblob:// fileRepository is only supported on Azure, but the cloud provider is %q", cloudProvider)))
 		}
+		if !vfs.IsValidAzureStorageAccountName(u.Host) {
+			allErrs = append(allErrs, field.Invalid(fieldPath, s, "azureblob:// fileRepository account must contain 3-24 lowercase letters or numbers"))
+		}
 		// Without a container, each remapped asset would treat its first path segment as the container.
 		if container, _, _ := strings.Cut(strings.TrimPrefix(u.Path, "/"), "/"); container == "" {
 			allErrs = append(allErrs, field.Invalid(fieldPath, s, "azureblob:// fileRepository must include a container: azureblob://<account>/<container>/<path>"))
