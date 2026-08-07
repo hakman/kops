@@ -1105,11 +1105,9 @@ func AddKarpenterPermissions(p *Policy, useCustomInstanceProfiles bool, useCusto
 		return err
 	}
 
-	// Launching an instance whose root volume is encrypted with a customer managed key
-	// requires the launching principal to be authorized on that key; EC2 makes the KMS calls
-	// on Karpenter's behalf. Upstream Karpenter has no equivalent statement, as it does not
-	// generate block device mappings. The key policy has to allow this role as well, either
-	// by naming it or by delegating to IAM; kOps does not manage the key policy.
+	// Launching an instance whose root volume is encrypted with a customer managed key requires the
+	// launching principal to be authorized on that key; EC2 makes the KMS calls on Karpenter's
+	// behalf. The key policy also has to allow this role; kOps does not manage the key policy.
 	if useCustomerManagedKeys {
 		addKMSIAMPolicies(p, false)
 	}

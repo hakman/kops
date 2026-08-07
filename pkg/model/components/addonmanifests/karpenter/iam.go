@@ -37,9 +37,8 @@ func (r *ServiceAccount) BuildAWSPolicy(b *iam.PolicyBuilder) (*iam.Policy, erro
 	// Instance groups with custom IAM instance profiles contain roles with names that kOps
 	// cannot predict.
 	useCustomInstanceProfiles := false
-	// Instance groups whose root volume is encrypted with a customer managed key make
-	// Karpenter launch instances that use that key, as the generated EC2NodeClass block device
-	// mapping carries it.
+	// The generated EC2NodeClass block device mapping carries the root volume encryption key, which
+	// Karpenter has to be authorized to use.
 	useCustomerManagedKeys := false
 	for _, ig := range b.AllInstanceGroups {
 		if !ig.IsKarpenterManaged() {
