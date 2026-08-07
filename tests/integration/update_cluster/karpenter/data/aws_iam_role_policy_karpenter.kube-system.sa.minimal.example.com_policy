@@ -1,16 +1,6 @@
 {
   "Statement": [
     {
-      "Action": "kms:CreateGrant",
-      "Condition": {
-        "Bool": {
-          "kms:GrantIsForAWSResource": "true"
-        }
-      },
-      "Effect": "Allow",
-      "Resource": "*"
-    },
-    {
       "Action": [
         "ec2:CreateFleet",
         "ec2:RunInstances"
@@ -149,8 +139,8 @@
     {
       "Action": [
         "kms:Decrypt",
-        "kms:DescribeKey",
-        "kms:GenerateDataKeyWithoutPlaintext",
+        "kms:Encrypt",
+        "kms:GenerateDataKey*",
         "kms:ReEncrypt*"
       ],
       "Condition": {
@@ -179,6 +169,8 @@
         "ec2:DescribeSubnets",
         "iam:GetInstanceProfile",
         "iam:ListInstanceProfiles",
+        "kms:CreateGrant",
+        "kms:DescribeKey",
         "pricing:GetProducts",
         "ssm:GetParameter"
       ],
