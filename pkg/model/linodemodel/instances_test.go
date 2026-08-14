@@ -53,28 +53,32 @@ func TestInstanceModelBuilderBuildUsesIGSubnetAndAllowsZeroSize(t *testing.T) {
 	}
 	context := newLinodeInstanceModelBuilderContext(cluster)
 	addBootstrapPrerequisites(context)
+	kopsModelContext := contextModel(cluster, []*kops.InstanceGroup{ig})
+	kopsModelContext.SSHPublicKeys = [][]byte{[]byte(testSSHPublicKey)}
+	linodeModelContext := &LinodeModelContext{KopsModelContext: kopsModelContext}
 
 	networkBuilder := &NetworkModelBuilder{
-		LinodeModelContext: &LinodeModelContext{KopsModelContext: contextModel(cluster, []*kops.InstanceGroup{ig})},
+		LinodeModelContext: linodeModelContext,
 		Lifecycle:          fi.LifecycleSync,
 	}
 	if err := networkBuilder.Build(context); err != nil {
 		t.Fatalf("NetworkModelBuilder.Build returned error: %v", err)
 	}
 
-	publicKey := fi.Resource(fi.NewStringResource(testSSHPublicKey))
-	context.AddTask(&linodetasks.SSHKey{
-		Name:      new("example-k8s-local-default"),
-		Lifecycle: fi.LifecycleSync,
-		PublicKey: &publicKey,
-	})
+	sshKeyBuilder := &SSHKeyModelBuilder{
+		LinodeModelContext: linodeModelContext,
+		Lifecycle:          fi.LifecycleSync,
+	}
+	if err := sshKeyBuilder.Build(context); err != nil {
+		t.Fatalf("SSHKeyModelBuilder.Build returned error: %v", err)
+	}
 
 	builder := &InstanceModelBuilder{
-		LinodeModelContext: &LinodeModelContext{KopsModelContext: contextModel(cluster, []*kops.InstanceGroup{ig})},
+		LinodeModelContext: linodeModelContext,
 		Lifecycle:          fi.LifecycleSync,
 		BootstrapScriptBuilder: &model.BootstrapScriptBuilder{
 			Lifecycle:        fi.LifecycleSync,
-			KopsModelContext: contextModel(cluster, []*kops.InstanceGroup{ig}),
+			KopsModelContext: kopsModelContext,
 		},
 	}
 
