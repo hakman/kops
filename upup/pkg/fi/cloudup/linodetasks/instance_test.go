@@ -30,6 +30,33 @@ import (
 	"k8s.io/kops/upup/pkg/fi/cloudup/linode"
 )
 
+func TestInstanceGetDependenciesIncludesUserData(t *testing.T) {
+	subnet := &Subnet{Name: new("example-k8s-local-subnet-a")}
+	publicKey := fi.Resource(fi.NewStringResource(testLinodeSSHPublicKey))
+	authorizedKey := &SSHKey{Name: new("example-k8s-local-default"), PublicKey: &publicKey}
+	userDataTask := &SSHKey{Name: new("userdata")}
+	userData := fi.Resource(&fi.CloudupTaskDependentResource{
+		Resource: fi.NewStringResource("#!/bin/bash\n"),
+		Task:     userDataTask,
+	})
+	instance := &Instance{
+		Subnet:         subnet,
+		AuthorizedKeys: []*SSHKey{authorizedKey},
+		UserData:       userData,
+	}
+	tasks := map[string]fi.CloudupTask{
+		"Subnet/example-k8s-local-subnet-a": subnet,
+		"SSHKey/example-k8s-local-default":  authorizedKey,
+		"SSHKey/userdata":                   userDataTask,
+	}
+
+	got := instance.GetDependencies(tasks)
+	want := []fi.CloudupTask{subnet, authorizedKey, userDataTask}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected dependencies: got %v, want %v", got, want)
+	}
+}
+
 func TestInstanceFindDoesNotMutateDesiredTask(t *testing.T) {
 	cluster := &kops.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "example.k8s.local"}}
 	userDataText := "#!/bin/bash\necho hello\n"

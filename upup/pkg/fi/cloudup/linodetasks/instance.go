@@ -55,7 +55,7 @@ func (i *Instance) CompareWithID() *string {
 	return i.Name
 }
 
-// GetDependencies returns the dependencies of the instance, which is the subnet it belongs to.
+// GetDependencies returns the dependencies of the instance.
 func (i *Instance) GetDependencies(tasks map[string]fi.CloudupTask) []fi.CloudupTask {
 	var deps []fi.CloudupTask
 	if i.Subnet != nil {
@@ -67,6 +67,9 @@ func (i *Instance) GetDependencies(tasks map[string]fi.CloudupTask) []fi.Cloudup
 				deps = append(deps, key)
 			}
 		}
+	}
+	if i.UserData != nil {
+		deps = append(deps, fi.FindDependencies(tasks, i.UserData)...)
 	}
 	return deps
 }
