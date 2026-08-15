@@ -25,9 +25,9 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	fakedynamic "k8s.io/client-go/dynamic/fake"
-	fakek8s "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/kops/channels/pkg/api"
 	"k8s.io/kops/channels/pkg/channels"
+	fakek8s "k8s.io/kops/pkg/slimclient/fake"
 )
 
 func TestGetUpdates(t *testing.T) {

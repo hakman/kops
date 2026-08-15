@@ -20,13 +20,11 @@ import (
 	"fmt"
 	"net/http"
 
-	"k8s.io/client-go/discovery"
-	"k8s.io/client-go/discovery/cached/memory"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/restmapper"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/kops/pkg/slimclient"
 	"k8s.io/kops/util/pkg/vfs"
 
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -36,9 +34,9 @@ type ChannelsFactory struct {
 	cachedRESTConfig *rest.Config
 	cachedHTTPClient *http.Client
 	vfsContext       *vfs.VFSContext
-	restMapper       *restmapper.DeferredDiscoveryRESTMapper
+	restMapper       meta.RESTMapper
 	dynamicClient    dynamic.Interface
-	kubernetesClient kubernetes.Interface
+	kubernetesClient slimclient.Interface
 }
 
 func NewChannelsFactory() *ChannelsFactory {
@@ -78,22 +76,16 @@ func (f *ChannelsFactory) HTTPClient() (*http.Client, error) {
 	return f.cachedHTTPClient, nil
 }
 
-func (f *ChannelsFactory) RESTMapper() (*restmapper.DeferredDiscoveryRESTMapper, error) {
+func (f *ChannelsFactory) RESTMapper() (meta.RESTMapper, error) {
 	if f.restMapper == nil {
 		restConfig, err := f.RESTConfig()
 		if err != nil {
 			return nil, err
 		}
-		httpClient, err := f.HTTPClient()
+		restMapper, err := slimclient.NewRESTMapper(restConfig)
 		if err != nil {
 			return nil, err
 		}
-		discoveryClient, err := discovery.NewDiscoveryClientForConfigAndClient(restConfig, httpClient)
-		if err != nil {
-			return nil, err
-		}
-
-		restMapper := restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(discoveryClient))
 
 		f.restMapper = restMapper
 	}
@@ -120,7 +112,7 @@ func (f *ChannelsFactory) DynamicClient() (dynamic.Interface, error) {
 	return f.dynamicClient, nil
 }
 
-func (f *ChannelsFactory) KubernetesClient() (kubernetes.Interface, error) {
+func (f *ChannelsFactory) KubernetesClient() (slimclient.Interface, error) {
 	if f.kubernetesClient == nil {
 		restConfig, err := f.RESTConfig()
 		if err != nil {
@@ -130,7 +122,7 @@ func (f *ChannelsFactory) KubernetesClient() (kubernetes.Interface, error) {
 		if err != nil {
 			return nil, err
 		}
-		kubernetesClient, err := kubernetes.NewForConfigAndClient(restConfig, httpClient)
+		kubernetesClient, err := slimclient.NewForConfigAndClient(restConfig, httpClient)
 		if err != nil {
 			return nil, err
 		}

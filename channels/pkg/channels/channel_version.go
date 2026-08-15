@@ -29,8 +29,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
+	"k8s.io/kops/pkg/slimclient"
 )
 
 // issuerGVR identifies cert-manager Issuer objects.
@@ -146,7 +146,7 @@ func (c *ChannelVersion) replaces(name string, existing *ChannelVersion) bool {
 	return false
 }
 
-func (c *Channel) GetInstalledVersion(ctx context.Context, k8sClient kubernetes.Interface) (*ChannelVersion, error) {
+func (c *Channel) GetInstalledVersion(ctx context.Context, k8sClient slimclient.Interface) (*ChannelVersion, error) {
 	ns, err := k8sClient.CoreV1().Namespaces().Get(ctx, c.Namespace, metav1.GetOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("error querying namespace %q: %v", c.Namespace, err)
@@ -160,7 +160,7 @@ func (c *Channel) GetInstalledVersion(ctx context.Context, k8sClient kubernetes.
 	return ParseChannelVersion(annotationValue)
 }
 
-func (c *Channel) IsPKIInstalled(ctx context.Context, k8sClient kubernetes.Interface, dynamicClient dynamic.Interface) (bool, error) {
+func (c *Channel) IsPKIInstalled(ctx context.Context, k8sClient slimclient.Interface, dynamicClient dynamic.Interface) (bool, error) {
 	_, err := k8sClient.CoreV1().Secrets("kube-system").Get(ctx, c.Name+"-ca", metav1.GetOptions{})
 	if errors.IsNotFound(err) {
 		return false, nil
@@ -188,7 +188,7 @@ type annotationPatchMetadata struct {
 	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
-func (c *Channel) SetInstalledVersion(ctx context.Context, k8sClient kubernetes.Interface, version *ChannelVersion) error {
+func (c *Channel) SetInstalledVersion(ctx context.Context, k8sClient slimclient.Interface, version *ChannelVersion) error {
 	// Primarily to check it exists
 	_, err := k8sClient.CoreV1().Namespaces().Get(ctx, c.Namespace, metav1.GetOptions{})
 	if err != nil {

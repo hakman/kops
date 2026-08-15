@@ -24,51 +24,9 @@ import (
 	"github.com/google/go-cmp/cmp"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes/fake"
-	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
-	typednetworkingv1 "k8s.io/client-go/kubernetes/typed/networking/v1"
 	"k8s.io/kops/dns-controller/pkg/dns"
-	"k8s.io/kops/pkg/slimclient"
+	fake "k8s.io/kops/pkg/slimclient/fake"
 )
-
-// fakeClientset adapts the generated fake clientset to slimclient.Interface.
-type fakeClientset struct {
-	clientset *fake.Clientset
-}
-
-var _ slimclient.Interface = &fakeClientset{}
-
-func (c *fakeClientset) CoreV1() slimclient.CoreV1Interface {
-	return &fakeCoreV1{client: c.clientset.CoreV1()}
-}
-
-func (c *fakeClientset) NetworkingV1() slimclient.NetworkingV1Interface {
-	return &fakeNetworkingV1{client: c.clientset.NetworkingV1()}
-}
-
-type fakeCoreV1 struct {
-	client typedcorev1.CoreV1Interface
-}
-
-func (c *fakeCoreV1) Pods(namespace string) slimclient.PodInterface {
-	return c.client.Pods(namespace)
-}
-
-func (c *fakeCoreV1) Services(namespace string) slimclient.ServiceInterface {
-	return c.client.Services(namespace)
-}
-
-func (c *fakeCoreV1) Nodes() slimclient.NodeInterface {
-	return c.client.Nodes()
-}
-
-type fakeNetworkingV1 struct {
-	client typednetworkingv1.NetworkingV1Interface
-}
-
-func (c *fakeNetworkingV1) Ingresses(namespace string) slimclient.IngressInterface {
-	return c.client.Ingresses(namespace)
-}
 
 func TestPodControllerMultipleIPs(t *testing.T) {
 	ctx := context.Background()
@@ -118,13 +76,13 @@ func TestPodControllerMultipleIPs(t *testing.T) {
 
 	client := fake.NewClientset()
 
-	nodes := client.CoreV1().Nodes()
+	nodes := client.Fake.CoreV1().Nodes()
 	_, err := nodes.Create(ctx, nspec, metav1.CreateOptions{})
 	if err != nil {
 		t.Fatalf("unexpected error creating node: %v", err)
 	}
 
-	pods := client.CoreV1().Pods("kube-system")
+	pods := client.Fake.CoreV1().Pods("kube-system")
 	_, err = pods.Create(ctx, pspec, metav1.CreateOptions{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -140,7 +98,7 @@ func TestPodControllerMultipleIPs(t *testing.T) {
 		scope: scope,
 	}
 
-	c, err := NewPodController(&fakeClientset{clientset: client}, dnsctx, "kube-system")
+	c, err := NewPodController(client, dnsctx, "kube-system")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -195,7 +153,7 @@ func TestPodControllerSingleIP(t *testing.T) {
 
 	client := fake.NewClientset()
 
-	pods := client.CoreV1().Pods("kube-system")
+	pods := client.Fake.CoreV1().Pods("kube-system")
 	_, err := pods.Create(ctx, pspec, metav1.CreateOptions{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -211,7 +169,7 @@ func TestPodControllerSingleIP(t *testing.T) {
 		scope: scope,
 	}
 
-	c, err := NewPodController(&fakeClientset{clientset: client}, dnsctx, "kube-system")
+	c, err := NewPodController(client, dnsctx, "kube-system")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

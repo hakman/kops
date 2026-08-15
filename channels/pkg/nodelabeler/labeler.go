@@ -23,9 +23,9 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"k8s.io/kops/pkg/nodelabels"
+	"k8s.io/kops/pkg/slimclient"
 )
 
 type nodePatch struct {
@@ -38,7 +38,7 @@ type nodePatchMetadata struct {
 
 // BootstrapControlPlaneNodeLabels applies labels to the current node so that it acts as a control-plane.
 // Safe to call repeatedly: the patch is skipped when the labels already match.
-func BootstrapControlPlaneNodeLabels(ctx context.Context, client kubernetes.Interface, nodeName string, nodeLabels map[string]string) error {
+func BootstrapControlPlaneNodeLabels(ctx context.Context, client slimclient.Interface, nodeName string, nodeLabels map[string]string) error {
 	if nodeName == "" {
 		return fmt.Errorf("node name is required")
 	}

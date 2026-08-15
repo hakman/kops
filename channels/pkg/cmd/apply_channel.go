@@ -30,14 +30,14 @@ import (
 	"github.com/blang/semver/v4"
 	"github.com/spf13/cobra"
 	"go.uber.org/multierr"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/restmapper"
 	"k8s.io/klog/v2"
 
 	"k8s.io/kops/channels/pkg/channels"
 	"k8s.io/kops/channels/pkg/nodelabeler"
+	"k8s.io/kops/pkg/slimclient"
 	"k8s.io/kops/util/pkg/tables"
 	"k8s.io/kops/util/pkg/vfs"
 )
@@ -170,7 +170,7 @@ func RunApplyChannel(ctx context.Context, f *ChannelsFactory, out io.Writer, opt
 		return err
 	}
 
-	kubernetesVersionInfo, err := k8sClient.Discovery().ServerVersion()
+	kubernetesVersionInfo, err := k8sClient.ServerVersion(ctx)
 	if err != nil {
 		return fmt.Errorf("error querying kubernetes version: %v", err)
 	}
@@ -201,7 +201,7 @@ func RunApplyChannel(ctx context.Context, f *ChannelsFactory, out io.Writer, opt
 	return merr
 }
 
-func applyMenu(ctx context.Context, menu *channels.AddonMenu, vfsContext *vfs.VFSContext, k8sClient kubernetes.Interface, dynamicClient dynamic.Interface, restMapper *restmapper.DeferredDiscoveryRESTMapper, apply bool) error {
+func applyMenu(ctx context.Context, menu *channels.AddonMenu, vfsContext *vfs.VFSContext, k8sClient slimclient.Interface, dynamicClient dynamic.Interface, restMapper meta.RESTMapper, apply bool) error {
 	// channelVersions is the list of installed addons in the cluster.
 	// It is keyed by <namespace>:<addon name>.
 	channelVersions, err := getChannelVersions(ctx, k8sClient)
@@ -279,7 +279,7 @@ func applyMenu(ctx context.Context, menu *channels.AddonMenu, vfsContext *vfs.VF
 	return merr
 }
 
-func getUpdates(ctx context.Context, menu *channels.AddonMenu, k8sClient kubernetes.Interface, dynamicClient dynamic.Interface, channelVersions map[string]*channels.ChannelVersion) ([]*channels.AddonUpdate, []*channels.Addon, error) {
+func getUpdates(ctx context.Context, menu *channels.AddonMenu, k8sClient slimclient.Interface, dynamicClient dynamic.Interface, channelVersions map[string]*channels.ChannelVersion) ([]*channels.AddonUpdate, []*channels.Addon, error) {
 	var updates []*channels.AddonUpdate
 	var needUpdates []*channels.Addon
 	for _, addon := range menu.Addons {
@@ -295,7 +295,7 @@ func getUpdates(ctx context.Context, menu *channels.AddonMenu, k8sClient kuberne
 	return updates, needUpdates, nil
 }
 
-func getChannelVersions(ctx context.Context, k8sClient kubernetes.Interface) (map[string]*channels.ChannelVersion, error) {
+func getChannelVersions(ctx context.Context, k8sClient slimclient.Interface) (map[string]*channels.ChannelVersion, error) {
 	namespaces, err := k8sClient.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("error listing namespaces: %v", err)

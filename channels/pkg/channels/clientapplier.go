@@ -20,16 +20,16 @@ import (
 	"context"
 	"fmt"
 
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/restmapper"
 	"k8s.io/kops/pkg/applylib/applyset"
 	"k8s.io/kops/pkg/kubemanifest"
 )
 
 type ClientApplier struct {
 	Client     dynamic.Interface
-	RESTMapper *restmapper.DeferredDiscoveryRESTMapper
+	RESTMapper meta.RESTMapper
 }
 
 // Apply applies the manifest to the cluster.

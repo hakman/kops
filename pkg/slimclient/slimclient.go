@@ -31,6 +31,9 @@ package slimclient
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
 
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -38,7 +41,9 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/gentype"
 	"k8s.io/client-go/rest"
@@ -60,13 +65,17 @@ func init() {
 type Interface interface {
 	CoreV1() CoreV1Interface
 	NetworkingV1() NetworkingV1Interface
+	// ServerVersion fetches the version information of the API server.
+	ServerVersion(ctx context.Context) (*version.Info, error)
 }
 
 // CoreV1Interface provides typed access to core/v1 resources.
 type CoreV1Interface interface {
-	Pods(namespace string) PodInterface
-	Services(namespace string) ServiceInterface
+	Namespaces() NamespaceInterface
 	Nodes() NodeInterface
+	Pods(namespace string) PodInterface
+	Secrets(namespace string) SecretInterface
+	Services(namespace string) ServiceInterface
 }
 
 // NetworkingV1Interface provides typed access to networking.k8s.io/v1 resources.
@@ -91,6 +100,20 @@ type NodeInterface interface {
 	Get(ctx context.Context, name string, opts metav1.GetOptions) (*corev1.Node, error)
 	List(ctx context.Context, opts metav1.ListOptions) (*corev1.NodeList, error)
 	Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error)
+	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (*corev1.Node, error)
+}
+
+// NamespaceInterface has the operations kOps uses on core/v1 Namespaces.
+type NamespaceInterface interface {
+	Get(ctx context.Context, name string, opts metav1.GetOptions) (*corev1.Namespace, error)
+	List(ctx context.Context, opts metav1.ListOptions) (*corev1.NamespaceList, error)
+	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (*corev1.Namespace, error)
+}
+
+// SecretInterface has the operations kOps uses on core/v1 Secrets.
+type SecretInterface interface {
+	Get(ctx context.Context, name string, opts metav1.GetOptions) (*corev1.Secret, error)
+	Create(ctx context.Context, obj *corev1.Secret, opts metav1.CreateOptions) (*corev1.Secret, error)
 }
 
 // IngressInterface has the operations kOps uses on networking.k8s.io/v1 Ingresses.
@@ -109,11 +132,20 @@ var _ Interface = &Clientset{}
 
 // NewForConfig returns a Clientset for the given config.
 func NewForConfig(config *rest.Config) (*Clientset, error) {
-	coreClient, err := restClientFor(config, schema.GroupVersion{Version: "v1"}, "/api")
+	return newClientset(config, nil)
+}
+
+// NewForConfigAndClient returns a Clientset for the given config and http client.
+func NewForConfigAndClient(config *rest.Config, httpClient *http.Client) (*Clientset, error) {
+	return newClientset(config, httpClient)
+}
+
+func newClientset(config *rest.Config, httpClient *http.Client) (*Clientset, error) {
+	coreClient, err := restClientForAndClient(config, schema.GroupVersion{Version: "v1"}, "/api", httpClient)
 	if err != nil {
 		return nil, err
 	}
-	networkingClient, err := restClientFor(config, networkingv1.SchemeGroupVersion, "/apis")
+	networkingClient, err := restClientForAndClient(config, networkingv1.SchemeGroupVersion, "/apis", httpClient)
 	if err != nil {
 		return nil, err
 	}
@@ -124,6 +156,10 @@ func NewForConfig(config *rest.Config) (*Clientset, error) {
 }
 
 func restClientFor(config *rest.Config, gv schema.GroupVersion, apiPath string) (rest.Interface, error) {
+	return restClientForAndClient(config, gv, apiPath, nil)
+}
+
+func restClientForAndClient(config *rest.Config, gv schema.GroupVersion, apiPath string, httpClient *http.Client) (rest.Interface, error) {
 	c := rest.CopyConfig(config)
 	c.GroupVersion = &gv
 	c.APIPath = apiPath
@@ -131,7 +167,23 @@ func restClientFor(config *rest.Config, gv schema.GroupVersion, apiPath string) 
 	if c.UserAgent == "" {
 		c.UserAgent = rest.DefaultKubernetesUserAgent()
 	}
+	if httpClient != nil {
+		return rest.RESTClientForConfigAndClient(c, httpClient)
+	}
 	return rest.RESTClientFor(c)
+}
+
+// ServerVersion fetches the version information of the API server.
+func (c *Clientset) ServerVersion(ctx context.Context) (*version.Info, error) {
+	body, err := c.corev1.client.Get().AbsPath("/version").Do(ctx).Raw()
+	if err != nil {
+		return nil, err
+	}
+	var info version.Info
+	if err := json.Unmarshal(body, &info); err != nil {
+		return nil, fmt.Errorf("unable to parse the server version: %w", err)
+	}
+	return &info, nil
 }
 
 // CoreV1 returns the client for the core/v1 API group.
@@ -160,6 +212,20 @@ func (c *coreV1Client) Services(namespace string) ServiceInterface {
 		"services", c.client, parameterCodec, namespace,
 		func() *corev1.Service { return &corev1.Service{} },
 		func() *corev1.ServiceList { return &corev1.ServiceList{} })
+}
+
+func (c *coreV1Client) Namespaces() NamespaceInterface {
+	return gentype.NewClientWithList[*corev1.Namespace, *corev1.NamespaceList](
+		"namespaces", c.client, parameterCodec, "",
+		func() *corev1.Namespace { return &corev1.Namespace{} },
+		func() *corev1.NamespaceList { return &corev1.NamespaceList{} })
+}
+
+func (c *coreV1Client) Secrets(namespace string) SecretInterface {
+	return gentype.NewClientWithList[*corev1.Secret, *corev1.SecretList](
+		"secrets", c.client, parameterCodec, namespace,
+		func() *corev1.Secret { return &corev1.Secret{} },
+		func() *corev1.SecretList { return &corev1.SecretList{} })
 }
 
 func (c *coreV1Client) Nodes() NodeInterface {

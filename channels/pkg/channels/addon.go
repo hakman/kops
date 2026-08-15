@@ -33,9 +33,9 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"k8s.io/kops/channels/pkg/api"
+	"k8s.io/kops/pkg/slimclient"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -110,7 +110,7 @@ func (a *Addon) GetNamespace() string {
 	return namespace
 }
 
-func (a *Addon) GetRequiredUpdates(ctx context.Context, k8sClient kubernetes.Interface, dynamicClient dynamic.Interface, existingVersion *ChannelVersion) (*AddonUpdate, error) {
+func (a *Addon) GetRequiredUpdates(ctx context.Context, k8sClient slimclient.Interface, dynamicClient dynamic.Interface, existingVersion *ChannelVersion) (*AddonUpdate, error) {
 	newVersion := a.ChannelVersion()
 
 	channel := a.buildChannel()
@@ -157,7 +157,7 @@ func (a *Addon) GetManifestFullUrl() (*url.URL, error) {
 	return manifestURL, nil
 }
 
-func (a *Addon) EnsureUpdated(ctx context.Context, vfsContext *vfs.VFSContext, k8sClient kubernetes.Interface, dynamicClient dynamic.Interface, pruner *Pruner, applier Applier, existingVersion *ChannelVersion) (*AddonUpdate, error) {
+func (a *Addon) EnsureUpdated(ctx context.Context, vfsContext *vfs.VFSContext, k8sClient slimclient.Interface, dynamicClient dynamic.Interface, pruner *Pruner, applier Applier, existingVersion *ChannelVersion) (*AddonUpdate, error) {
 	required, err := a.GetRequiredUpdates(ctx, k8sClient, dynamicClient, existingVersion)
 	if err != nil {
 		return nil, err
@@ -183,7 +183,7 @@ func (a *Addon) EnsureUpdated(ctx context.Context, vfsContext *vfs.VFSContext, k
 	return required, merr
 }
 
-func (a *Addon) updateAddon(ctx context.Context, k8sClient kubernetes.Interface, vfsContext *vfs.VFSContext, pruner *Pruner, applier Applier, required *AddonUpdate) error {
+func (a *Addon) updateAddon(ctx context.Context, k8sClient slimclient.Interface, vfsContext *vfs.VFSContext, pruner *Pruner, applier Applier, required *AddonUpdate) error {
 	manifestURL, err := a.GetManifestFullUrl()
 	if err != nil {
 		return err
@@ -234,7 +234,7 @@ func (a *Addon) updateAddon(ctx context.Context, k8sClient kubernetes.Interface,
 	return nil
 }
 
-func (a *Addon) AddNeedsUpdateLabel(ctx context.Context, k8sClient kubernetes.Interface, required *AddonUpdate) error {
+func (a *Addon) AddNeedsUpdateLabel(ctx context.Context, k8sClient slimclient.Interface, required *AddonUpdate) error {
 	if required.ExistingVersion != nil {
 		if a.Spec.NeedsRollingUpdate != "" {
 			err := a.patchNeedsUpdateLabel(ctx, k8sClient)
@@ -246,7 +246,7 @@ func (a *Addon) AddNeedsUpdateLabel(ctx context.Context, k8sClient kubernetes.In
 	return nil
 }
 
-func (a *Addon) patchNeedsUpdateLabel(ctx context.Context, k8sClient kubernetes.Interface) error {
+func (a *Addon) patchNeedsUpdateLabel(ctx context.Context, k8sClient slimclient.Interface) error {
 	klog.Infof("addon %v wants to update %v nodes", a.Name, a.Spec.NeedsRollingUpdate)
 	selector := ""
 	switch a.Spec.NeedsRollingUpdate {
@@ -279,7 +279,7 @@ func (a *Addon) patchNeedsUpdateLabel(ctx context.Context, k8sClient kubernetes.
 	return nil
 }
 
-func (a *Addon) installPKI(ctx context.Context, k8sClient kubernetes.Interface, dynamicClient dynamic.Interface) error {
+func (a *Addon) installPKI(ctx context.Context, k8sClient slimclient.Interface, dynamicClient dynamic.Interface) error {
 	klog.Infof("installing PKI for %q", a.Name)
 	req := &pki.IssueCertRequest{
 		Type: "ca",
