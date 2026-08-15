@@ -28,7 +28,6 @@ import (
 	"time"
 
 	"github.com/blang/semver/v4"
-	certmanager "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned"
 	"github.com/spf13/cobra"
 	"go.uber.org/multierr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -156,23 +155,9 @@ func runApplyChannelLoop(ctx context.Context, out io.Writer, options *ApplyChann
 }
 
 func RunApplyChannel(ctx context.Context, f *ChannelsFactory, out io.Writer, options *ApplyChannelOptions, args []string) error {
-	restConfig, err := f.RESTConfig()
-	if err != nil {
-		return err
-	}
-	httpClient, err := f.HTTPClient()
-	if err != nil {
-		return err
-	}
-
 	k8sClient, err := f.KubernetesClient()
 	if err != nil {
 		return fmt.Errorf("building kube client: %w", err)
-	}
-
-	cmClient, err := certmanager.NewForConfigAndClient(restConfig, httpClient)
-	if err != nil {
-		return fmt.Errorf("building cert manager client: %w", err)
 	}
 
 	dynamicClient, err := f.DynamicClient()
@@ -209,14 +194,14 @@ func RunApplyChannel(ctx context.Context, f *ChannelsFactory, out io.Writer, opt
 			merr = multierr.Append(merr, fmt.Errorf("building menu for %q: %w", channelLocation, err))
 			continue
 		}
-		if err := applyMenu(ctx, menu, f.VFSContext(), k8sClient, cmClient, dynamicClient, restMapper, options.Yes); err != nil {
+		if err := applyMenu(ctx, menu, f.VFSContext(), k8sClient, dynamicClient, restMapper, options.Yes); err != nil {
 			merr = multierr.Append(merr, fmt.Errorf("applying %q: %w", channelLocation, err))
 		}
 	}
 	return merr
 }
 
-func applyMenu(ctx context.Context, menu *channels.AddonMenu, vfsContext *vfs.VFSContext, k8sClient kubernetes.Interface, cmClient certmanager.Interface, dynamicClient dynamic.Interface, restMapper *restmapper.DeferredDiscoveryRESTMapper, apply bool) error {
+func applyMenu(ctx context.Context, menu *channels.AddonMenu, vfsContext *vfs.VFSContext, k8sClient kubernetes.Interface, dynamicClient dynamic.Interface, restMapper *restmapper.DeferredDiscoveryRESTMapper, apply bool) error {
 	// channelVersions is the list of installed addons in the cluster.
 	// It is keyed by <namespace>:<addon name>.
 	channelVersions, err := getChannelVersions(ctx, k8sClient)
@@ -224,7 +209,7 @@ func applyMenu(ctx context.Context, menu *channels.AddonMenu, vfsContext *vfs.VF
 		return fmt.Errorf("cannot fetch channel versions from namespaces: %w", err)
 	}
 
-	updates, needUpdates, err := getUpdates(ctx, menu, k8sClient, cmClient, channelVersions)
+	updates, needUpdates, err := getUpdates(ctx, menu, k8sClient, dynamicClient, channelVersions)
 	if err != nil {
 		return fmt.Errorf("failed to get updates: %w", err)
 	}
@@ -283,7 +268,7 @@ func applyMenu(ctx context.Context, menu *channels.AddonMenu, vfsContext *vfs.VF
 	var merr error
 
 	for _, needUpdate := range needUpdates {
-		update, err := needUpdate.EnsureUpdated(ctx, vfsContext, k8sClient, cmClient, pruner, applier, channelVersions[needUpdate.GetNamespace()+":"+needUpdate.Name])
+		update, err := needUpdate.EnsureUpdated(ctx, vfsContext, k8sClient, dynamicClient, pruner, applier, channelVersions[needUpdate.GetNamespace()+":"+needUpdate.Name])
 		if err != nil {
 			merr = multierr.Append(merr, fmt.Errorf("updating %q: %w", needUpdate.Name, err))
 		} else if update != nil {
@@ -294,11 +279,11 @@ func applyMenu(ctx context.Context, menu *channels.AddonMenu, vfsContext *vfs.VF
 	return merr
 }
 
-func getUpdates(ctx context.Context, menu *channels.AddonMenu, k8sClient kubernetes.Interface, cmClient certmanager.Interface, channelVersions map[string]*channels.ChannelVersion) ([]*channels.AddonUpdate, []*channels.Addon, error) {
+func getUpdates(ctx context.Context, menu *channels.AddonMenu, k8sClient kubernetes.Interface, dynamicClient dynamic.Interface, channelVersions map[string]*channels.ChannelVersion) ([]*channels.AddonUpdate, []*channels.Addon, error) {
 	var updates []*channels.AddonUpdate
 	var needUpdates []*channels.Addon
 	for _, addon := range menu.Addons {
-		update, err := addon.GetRequiredUpdates(ctx, k8sClient, cmClient, channelVersions[addon.GetNamespace()+":"+addon.Name])
+		update, err := addon.GetRequiredUpdates(ctx, k8sClient, dynamicClient, channelVersions[addon.GetNamespace()+":"+addon.Name])
 		if err != nil {
 			return nil, nil, fmt.Errorf("error checking for required update: %v", err)
 		}

@@ -23,7 +23,6 @@ import (
 	"testing"
 
 	"github.com/blang/semver/v4"
-	fakecertmanager "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned/fake"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -344,7 +343,7 @@ func Test_GetRequiredUpdates(t *testing.T) {
 		},
 	}
 	fakek8s := fakekubernetes.NewClientset(kubeSystem)
-	fakecm := fakecertmanager.NewSimpleClientset()
+	fakecm := newFakeDynamicClient()
 	addon := &Addon{
 		Name: "test",
 		Spec: &api.AddonSpec{
@@ -475,7 +474,7 @@ func Test_NeedsRollingUpdate(t *testing.T) {
 		existingChannels := FindChannelVersions(kubeSystem)
 
 		fakek8s := fakekubernetes.NewClientset(objects...)
-		fakecm := fakecertmanager.NewSimpleClientset()
+		fakecm := newFakeDynamicClient()
 
 		addon := g.newAddon
 		required, err := addon.GetRequiredUpdates(ctx, fakek8s, fakecm, existingChannels[addon.Name])
@@ -537,7 +536,7 @@ func Test_InstallPKI(t *testing.T) {
 		},
 	}
 	fakek8s := fakekubernetes.NewClientset(kubeSystem)
-	fakecm := fakecertmanager.NewSimpleClientset()
+	fakecm := newFakeDynamicClient()
 	addon := &Addon{
 		Name: "test",
 		Spec: &api.AddonSpec{
@@ -561,7 +560,7 @@ func Test_InstallPKI(t *testing.T) {
 		t.Errorf("unexpected error: %v", err)
 	}
 
-	_, err = fakecm.CertmanagerV1().Issuers("kube-system").Get(ctx, "test", metav1.GetOptions{})
+	_, err = fakecm.Resource(issuerGVR).Namespace("kube-system").Get(ctx, "test", metav1.GetOptions{})
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}

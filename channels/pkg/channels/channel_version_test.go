@@ -20,12 +20,19 @@ import (
 	"context"
 	"testing"
 
-	cmv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
-	fakecertmanager "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned/fake"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	fakedynamic "k8s.io/client-go/dynamic/fake"
 	fakekubernetes "k8s.io/client-go/kubernetes/fake"
 )
+
+func newFakeDynamicClient(objects ...runtime.Object) *fakedynamic.FakeDynamicClient {
+	return fakedynamic.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(),
+		map[schema.GroupVersionResource]string{issuerGVR: "IssuerList"}, objects...)
+}
 
 func Test_IsPKIInstalled(t *testing.T) {
 	ctx := context.Background()
@@ -34,7 +41,7 @@ func Test_IsPKIInstalled(t *testing.T) {
 			Name: "kube-sysetem",
 		},
 	})
-	fakecm := fakecertmanager.NewSimpleClientset()
+	fakecm := newFakeDynamicClient()
 
 	channel := &Channel{
 		Name: "test",
@@ -60,11 +67,15 @@ func Test_IsPKIInstalled(t *testing.T) {
 			},
 		},
 	)
-	fakecm = fakecertmanager.NewSimpleClientset(
-		&cmv1.Issuer{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test",
-				Namespace: "kube-system",
+	fakecm = newFakeDynamicClient(
+		&unstructured.Unstructured{
+			Object: map[string]interface{}{
+				"apiVersion": "cert-manager.io/v1",
+				"kind":       "Issuer",
+				"metadata": map[string]interface{}{
+					"name":      "test",
+					"namespace": "kube-system",
+				},
 			},
 		},
 	)

@@ -27,16 +27,16 @@ import (
 	"k8s.io/kops/pkg/pki"
 	"k8s.io/kops/util/pkg/vfs"
 
-	certmanager "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"k8s.io/kops/channels/pkg/api"
 
-	cmv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -110,7 +110,7 @@ func (a *Addon) GetNamespace() string {
 	return namespace
 }
 
-func (a *Addon) GetRequiredUpdates(ctx context.Context, k8sClient kubernetes.Interface, cmClient certmanager.Interface, existingVersion *ChannelVersion) (*AddonUpdate, error) {
+func (a *Addon) GetRequiredUpdates(ctx context.Context, k8sClient kubernetes.Interface, dynamicClient dynamic.Interface, existingVersion *ChannelVersion) (*AddonUpdate, error) {
 	newVersion := a.ChannelVersion()
 
 	channel := a.buildChannel()
@@ -118,7 +118,7 @@ func (a *Addon) GetRequiredUpdates(ctx context.Context, k8sClient kubernetes.Int
 	pkiInstalled := true
 
 	if a.Spec.NeedsPKI {
-		needsPKI, err := channel.IsPKIInstalled(ctx, k8sClient, cmClient)
+		needsPKI, err := channel.IsPKIInstalled(ctx, k8sClient, dynamicClient)
 		if err != nil {
 			return nil, err
 		}
@@ -157,8 +157,8 @@ func (a *Addon) GetManifestFullUrl() (*url.URL, error) {
 	return manifestURL, nil
 }
 
-func (a *Addon) EnsureUpdated(ctx context.Context, vfsContext *vfs.VFSContext, k8sClient kubernetes.Interface, cmClient certmanager.Interface, pruner *Pruner, applier Applier, existingVersion *ChannelVersion) (*AddonUpdate, error) {
-	required, err := a.GetRequiredUpdates(ctx, k8sClient, cmClient, existingVersion)
+func (a *Addon) EnsureUpdated(ctx context.Context, vfsContext *vfs.VFSContext, k8sClient kubernetes.Interface, dynamicClient dynamic.Interface, pruner *Pruner, applier Applier, existingVersion *ChannelVersion) (*AddonUpdate, error) {
+	required, err := a.GetRequiredUpdates(ctx, k8sClient, dynamicClient, existingVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -175,7 +175,7 @@ func (a *Addon) EnsureUpdated(ctx context.Context, vfsContext *vfs.VFSContext, k
 		}
 	}
 	if required.InstallPKI {
-		err := a.installPKI(ctx, k8sClient, cmClient)
+		err := a.installPKI(ctx, k8sClient, dynamicClient)
 		if err != nil {
 			merr = multierr.Append(merr, err)
 		}
@@ -279,7 +279,7 @@ func (a *Addon) patchNeedsUpdateLabel(ctx context.Context, k8sClient kubernetes.
 	return nil
 }
 
-func (a *Addon) installPKI(ctx context.Context, k8sClient kubernetes.Interface, cmClient certmanager.Interface) error {
+func (a *Addon) installPKI(ctx context.Context, k8sClient kubernetes.Interface, dynamicClient dynamic.Interface) error {
 	klog.Infof("installing PKI for %q", a.Name)
 	req := &pki.IssueCertRequest{
 		Type: "ca",
@@ -321,21 +321,23 @@ func (a *Addon) installPKI(ctx context.Context, k8sClient kubernetes.Interface, 
 		return err
 	}
 
-	issuer := &cmv1.Issuer{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      a.Name,
-			Namespace: "kube-system",
-		},
-		Spec: cmv1.IssuerSpec{
-			IssuerConfig: cmv1.IssuerConfig{
-				CA: &cmv1.CAIssuer{
-					SecretName: secretName,
+	issuer := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "cert-manager.io/v1",
+			"kind":       "Issuer",
+			"metadata": map[string]interface{}{
+				"name":      a.Name,
+				"namespace": "kube-system",
+			},
+			"spec": map[string]interface{}{
+				"ca": map[string]interface{}{
+					"secretName": secretName,
 				},
 			},
 		},
 	}
 
-	_, err = cmClient.CertmanagerV1().Issuers("kube-system").Create(ctx, issuer, metav1.CreateOptions{})
+	_, err = dynamicClient.Resource(issuerGVR).Namespace("kube-system").Create(ctx, issuer, metav1.CreateOptions{})
 	if err != nil && !errors.IsAlreadyExists(err) {
 		return err
 	}
