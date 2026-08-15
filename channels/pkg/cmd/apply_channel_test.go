@@ -20,9 +20,11 @@ import (
 	"context"
 	"testing"
 
-	cmfake "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned/fake"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	fakedynamic "k8s.io/client-go/dynamic/fake"
 	fakek8s "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/kops/channels/pkg/api"
 	"k8s.io/kops/channels/pkg/channels"
@@ -64,7 +66,7 @@ func TestGetUpdates(t *testing.T) {
 			},
 		},
 	}
-	_, needUpdates, err := getUpdates(ctx, menu, k8sClient, cmfake.NewSimpleClientset(), channelVersions)
+	_, needUpdates, err := getUpdates(ctx, menu, k8sClient, fakedynamic.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), map[schema.GroupVersionResource]string{{Group: "cert-manager.io", Version: "v1", Resource: "issuers"}: "IssuerList"}), channelVersions)
 	if err != nil {
 		t.Errorf("failed to get updates: %v", err)
 	}

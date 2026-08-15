@@ -393,26 +393,6 @@ github.com/beorn7/perks/quantile
 # github.com/blang/semver/v4 v4.0.0
 ## explicit; go 1.14
 github.com/blang/semver/v4
-# github.com/cert-manager/cert-manager v1.21.1
-## explicit; go 1.26.0
-github.com/cert-manager/cert-manager/pkg/apis/acme
-github.com/cert-manager/cert-manager/pkg/apis/acme/v1
-github.com/cert-manager/cert-manager/pkg/apis/certmanager
-github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1
-github.com/cert-manager/cert-manager/pkg/apis/meta
-github.com/cert-manager/cert-manager/pkg/apis/meta/v1
-github.com/cert-manager/cert-manager/pkg/client/applyconfigurations
-github.com/cert-manager/cert-manager/pkg/client/applyconfigurations/acme/v1
-github.com/cert-manager/cert-manager/pkg/client/applyconfigurations/certmanager/v1
-github.com/cert-manager/cert-manager/pkg/client/applyconfigurations/internal
-github.com/cert-manager/cert-manager/pkg/client/applyconfigurations/meta/v1
-github.com/cert-manager/cert-manager/pkg/client/clientset/versioned
-github.com/cert-manager/cert-manager/pkg/client/clientset/versioned/fake
-github.com/cert-manager/cert-manager/pkg/client/clientset/versioned/scheme
-github.com/cert-manager/cert-manager/pkg/client/clientset/versioned/typed/acme/v1
-github.com/cert-manager/cert-manager/pkg/client/clientset/versioned/typed/acme/v1/fake
-github.com/cert-manager/cert-manager/pkg/client/clientset/versioned/typed/certmanager/v1
-github.com/cert-manager/cert-manager/pkg/client/clientset/versioned/typed/certmanager/v1/fake
 # github.com/cespare/xxhash/v2 v2.3.0
 ## explicit; go 1.11
 github.com/cespare/xxhash/v2
@@ -1773,6 +1753,7 @@ k8s.io/client-go/discovery/cached/disk
 k8s.io/client-go/discovery/cached/memory
 k8s.io/client-go/discovery/fake
 k8s.io/client-go/dynamic
+k8s.io/client-go/dynamic/fake
 k8s.io/client-go/features
 k8s.io/client-go/gentype
 k8s.io/client-go/informers
@@ -2192,9 +2173,6 @@ sigs.k8s.io/controller-runtime/pkg/webhook/admission/metrics
 sigs.k8s.io/controller-runtime/pkg/webhook/conversion
 sigs.k8s.io/controller-runtime/pkg/webhook/conversion/metrics
 sigs.k8s.io/controller-runtime/pkg/webhook/internal/metrics
-# sigs.k8s.io/gateway-api v1.6.0
-## explicit; go 1.26.0
-sigs.k8s.io/gateway-api/apis/v1
 # sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730
 ## explicit; go 1.23
 sigs.k8s.io/json

@@ -23,14 +23,18 @@ import (
 	"strconv"
 	"strings"
 
-	certmanager "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 )
+
+// issuerGVR identifies cert-manager Issuer objects.
+var issuerGVR = schema.GroupVersionResource{Group: "cert-manager.io", Version: "v1", Resource: "issuers"}
 
 const AnnotationPrefix = "addons.k8s.io/"
 
@@ -156,7 +160,7 @@ func (c *Channel) GetInstalledVersion(ctx context.Context, k8sClient kubernetes.
 	return ParseChannelVersion(annotationValue)
 }
 
-func (c *Channel) IsPKIInstalled(ctx context.Context, k8sClient kubernetes.Interface, cmClient certmanager.Interface) (bool, error) {
+func (c *Channel) IsPKIInstalled(ctx context.Context, k8sClient kubernetes.Interface, dynamicClient dynamic.Interface) (bool, error) {
 	_, err := k8sClient.CoreV1().Secrets("kube-system").Get(ctx, c.Name+"-ca", metav1.GetOptions{})
 	if errors.IsNotFound(err) {
 		return false, nil
@@ -165,7 +169,7 @@ func (c *Channel) IsPKIInstalled(ctx context.Context, k8sClient kubernetes.Inter
 		return true, err
 	}
 
-	_, err = cmClient.CertmanagerV1().Issuers("kube-system").Get(ctx, c.Name, metav1.GetOptions{})
+	_, err = dynamicClient.Resource(issuerGVR).Namespace("kube-system").Get(ctx, c.Name, metav1.GetOptions{})
 	if errors.IsNotFound(err) {
 		return false, nil
 	}
