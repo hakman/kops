@@ -25,23 +25,23 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/watch"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"k8s.io/kops/dns-controller/pkg/dns"
 	"k8s.io/kops/dns-controller/pkg/util"
+	"k8s.io/kops/pkg/slimclient"
 	"k8s.io/kops/upup/pkg/fi/utils"
 )
 
 // PodController watches for Pods with dns annotations
 type PodController struct {
 	util.Stoppable
-	client    kubernetes.Interface
+	client    slimclient.Interface
 	namespace string
 	scope     dns.Scope
 }
 
 // NewPodController creates a podController
-func NewPodController(client kubernetes.Interface, dns dns.Context, namespace string) (*PodController, error) {
+func NewPodController(client slimclient.Interface, dns dns.Context, namespace string) (*PodController, error) {
 	scope, err := dns.CreateScope("pod")
 	if err != nil {
 		return nil, fmt.Errorf("error building dns scope: %v", err)

@@ -26,7 +26,6 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/pflag"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	_ "k8s.io/component-base/metrics/prometheus/restclient" // for client metric registration
 	"k8s.io/klog/v2"
@@ -39,6 +38,7 @@ import (
 	_ "k8s.io/kops/dnsprovider/pkg/dnsprovider/providers/google/clouddns"
 	_ "k8s.io/kops/dnsprovider/pkg/dnsprovider/providers/openstack/designate"
 	_ "k8s.io/kops/dnsprovider/pkg/dnsprovider/providers/scaleway"
+	"k8s.io/kops/pkg/slimclient"
 )
 
 var (
@@ -112,7 +112,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	client, err := kubernetes.NewForConfig(config)
+	client, err := slimclient.NewForConfig(config)
 	if err != nil {
 		klog.Fatalf("error building REST client: %v", err)
 	}
@@ -150,7 +150,7 @@ func main() {
 }
 
 // initializeWatchers is responsible for creating the watchers
-func initializeWatchers(client kubernetes.Interface, dnsctl *dns.DNSController, namespace string, watchIngress bool, internalRecordTypes []dns.RecordType) error {
+func initializeWatchers(client slimclient.Interface, dnsctl *dns.DNSController, namespace string, watchIngress bool, internalRecordTypes []dns.RecordType) error {
 	klog.V(1).Infof("initializing the watch controllers, namespace: %q", namespace)
 
 	nodeController, err := watchers.NewNodeController(client, dnsctl, internalRecordTypes)

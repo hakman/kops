@@ -24,11 +24,11 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/watch"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"k8s.io/kops/dns-controller/pkg/dns"
 	"k8s.io/kops/dns-controller/pkg/util"
 	kopsutil "k8s.io/kops/pkg/apis/kops/util"
+	"k8s.io/kops/pkg/slimclient"
 	"k8s.io/kops/upup/pkg/fi/utils"
 )
 
@@ -37,13 +37,13 @@ import (
 // Unlike other watchers, NodeController only creates alias records referenced by records from other controllers
 type NodeController struct {
 	util.Stoppable
-	client   kubernetes.Interface
+	client   slimclient.Interface
 	scope    dns.Scope
 	haveType map[dns.RecordType]bool
 }
 
 // NewNodeController creates a NodeController
-func NewNodeController(client kubernetes.Interface, dnsContext dns.Context, internalRecordTypes []dns.RecordType) (*NodeController, error) {
+func NewNodeController(client slimclient.Interface, dnsContext dns.Context, internalRecordTypes []dns.RecordType) (*NodeController, error) {
 	scope, err := dnsContext.CreateScope("node")
 	if err != nil {
 		return nil, fmt.Errorf("error building dns scope: %v", err)
