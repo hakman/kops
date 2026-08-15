@@ -163,7 +163,9 @@ func restClientForAndClient(config *rest.Config, gv schema.GroupVersion, apiPath
 	c := rest.CopyConfig(config)
 	c.GroupVersion = &gv
 	c.APIPath = apiPath
-	c.NegotiatedSerializer = codecs.WithoutConversion()
+	// CodecFactoryForGeneratedClient applies client feature gates that affect
+	// serialization (such as CBOR), the same way generated clients do.
+	c.NegotiatedSerializer = rest.CodecFactoryForGeneratedClient(scheme, codecs).WithoutConversion()
 	if c.UserAgent == "" {
 		c.UserAgent = rest.DefaultKubernetesUserAgent()
 	}
