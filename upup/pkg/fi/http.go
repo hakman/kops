@@ -25,10 +25,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
-	"cloud.google.com/go/storage"
 	"k8s.io/klog/v2"
 	"k8s.io/kops/util/pkg/hashing"
 	"k8s.io/kops/util/pkg/vfs"
@@ -104,23 +102,17 @@ func downloadURLToWriter(ctx context.Context, desturl string, dest io.Writer, ha
 
 	switch u.Scheme {
 	case "gs":
-		bucketName := u.Host
-		objectName := strings.TrimPrefix(u.Path, "/")
-
-		client, err := storage.NewClient(ctx)
+		// vfs authenticates with the ambient GCP credentials.
+		p, err := vfs.Context.BuildVfsPath(desturl)
 		if err != nil {
-			return nil, fmt.Errorf("Failed to create client %q: %v", desturl, err)
+			return nil, fmt.Errorf("building path for %q: %w", desturl, err)
 		}
-		defer client.Close()
-
-		reader, err := client.Bucket(bucketName).Object(objectName).NewReader(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("Failed to open reader on object %q: %v", desturl, err)
+		gsPath, ok := p.(*vfs.GSPath)
+		if !ok {
+			return nil, fmt.Errorf("unexpected path type %T for %q", p, desturl)
 		}
-		defer reader.Close()
-
-		if _, err := io.Copy(writer, reader); err != nil {
-			return nil, fmt.Errorf("error downloading HTTP content from %q: %v", desturl, err)
+		if _, err := gsPath.WriteTo(writer); err != nil {
+			return nil, fmt.Errorf("error downloading content from %q: %w", desturl, err)
 		}
 	case "s3":
 		// vfs resolves the bucket region and signs the request with the ambient AWS credentials.
