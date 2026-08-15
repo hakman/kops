@@ -337,6 +337,10 @@ verify-gofmt:
 verify-gomod:
 	hack/verify-gomod.sh
 
+.PHONY: verify-slimclient
+verify-slimclient:
+	hack/verify-slimclient.sh
+
 # find release notes, remove PR titles and output the rest to .build, then run misspell on all files
 .PHONY: verify-misspelling
 verify-misspelling:
@@ -377,12 +381,12 @@ verify-ig-role-comparisons:
 # ci target is for developers, it aims to cover all the CI jobs
 # verify-gendocs will call kops target
 .PHONY: ci
-ci: govet verify-gofmt verify-ig-role-comparisons verify-crds verify-gomod verify-goimports verify-boilerplate verify-versions verify-misspelling verify-shellcheck verify-golangci-lint verify-terraform nodeup examples test | verify-gendocs verify-apimachinery verify-codegen
+ci: govet verify-gofmt verify-ig-role-comparisons verify-crds verify-gomod verify-goimports verify-boilerplate verify-versions verify-misspelling verify-shellcheck verify-golangci-lint verify-terraform verify-slimclient nodeup examples test | verify-gendocs verify-apimachinery verify-codegen
 	echo "Done!"
 
 # we skip tasks that are covered by other jobs
 .PHONY: quick-ci
-quick-ci: verify-crds verify-goimports govet verify-boilerplate verify-versions verify-misspelling verify-shellcheck | verify-gendocs verify-apimachinery verify-codegen
+quick-ci: verify-crds verify-goimports govet verify-boilerplate verify-versions verify-misspelling verify-shellcheck verify-slimclient | verify-gendocs verify-apimachinery verify-codegen
 	echo "Done!"
 
 # --------------------------------------------------
