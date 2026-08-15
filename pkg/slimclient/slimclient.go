@@ -45,7 +45,6 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/apimachinery/pkg/watch"
-	"k8s.io/client-go/gentype"
 	"k8s.io/client-go/rest"
 )
 
@@ -203,38 +202,43 @@ type coreV1Client struct {
 }
 
 func (c *coreV1Client) Pods(namespace string) PodInterface {
-	return gentype.NewClientWithList[*corev1.Pod, *corev1.PodList](
-		"pods", c.client, parameterCodec, namespace,
-		func() *corev1.Pod { return &corev1.Pod{} },
-		func() *corev1.PodList { return &corev1.PodList{} })
+	return &resourceClient[*corev1.Pod, *corev1.PodList]{
+		client: c.client, resource: "pods", namespace: namespace,
+		newObject: func() *corev1.Pod { return &corev1.Pod{} },
+		newList:   func() *corev1.PodList { return &corev1.PodList{} },
+	}
 }
 
 func (c *coreV1Client) Services(namespace string) ServiceInterface {
-	return gentype.NewClientWithList[*corev1.Service, *corev1.ServiceList](
-		"services", c.client, parameterCodec, namespace,
-		func() *corev1.Service { return &corev1.Service{} },
-		func() *corev1.ServiceList { return &corev1.ServiceList{} })
+	return &resourceClient[*corev1.Service, *corev1.ServiceList]{
+		client: c.client, resource: "services", namespace: namespace,
+		newObject: func() *corev1.Service { return &corev1.Service{} },
+		newList:   func() *corev1.ServiceList { return &corev1.ServiceList{} },
+	}
 }
 
 func (c *coreV1Client) Namespaces() NamespaceInterface {
-	return gentype.NewClientWithList[*corev1.Namespace, *corev1.NamespaceList](
-		"namespaces", c.client, parameterCodec, "",
-		func() *corev1.Namespace { return &corev1.Namespace{} },
-		func() *corev1.NamespaceList { return &corev1.NamespaceList{} })
+	return &resourceClient[*corev1.Namespace, *corev1.NamespaceList]{
+		client: c.client, resource: "namespaces",
+		newObject: func() *corev1.Namespace { return &corev1.Namespace{} },
+		newList:   func() *corev1.NamespaceList { return &corev1.NamespaceList{} },
+	}
 }
 
 func (c *coreV1Client) Secrets(namespace string) SecretInterface {
-	return gentype.NewClientWithList[*corev1.Secret, *corev1.SecretList](
-		"secrets", c.client, parameterCodec, namespace,
-		func() *corev1.Secret { return &corev1.Secret{} },
-		func() *corev1.SecretList { return &corev1.SecretList{} })
+	return &resourceClient[*corev1.Secret, *corev1.SecretList]{
+		client: c.client, resource: "secrets", namespace: namespace,
+		newObject: func() *corev1.Secret { return &corev1.Secret{} },
+		newList:   func() *corev1.SecretList { return &corev1.SecretList{} },
+	}
 }
 
 func (c *coreV1Client) Nodes() NodeInterface {
-	return gentype.NewClientWithList[*corev1.Node, *corev1.NodeList](
-		"nodes", c.client, parameterCodec, "",
-		func() *corev1.Node { return &corev1.Node{} },
-		func() *corev1.NodeList { return &corev1.NodeList{} })
+	return &resourceClient[*corev1.Node, *corev1.NodeList]{
+		client: c.client, resource: "nodes",
+		newObject: func() *corev1.Node { return &corev1.Node{} },
+		newList:   func() *corev1.NodeList { return &corev1.NodeList{} },
+	}
 }
 
 type networkingV1Client struct {
@@ -242,8 +246,9 @@ type networkingV1Client struct {
 }
 
 func (c *networkingV1Client) Ingresses(namespace string) IngressInterface {
-	return gentype.NewClientWithList[*networkingv1.Ingress, *networkingv1.IngressList](
-		"ingresses", c.client, parameterCodec, namespace,
-		func() *networkingv1.Ingress { return &networkingv1.Ingress{} },
-		func() *networkingv1.IngressList { return &networkingv1.IngressList{} })
+	return &resourceClient[*networkingv1.Ingress, *networkingv1.IngressList]{
+		client: c.client, resource: "ingresses", namespace: namespace,
+		newObject: func() *networkingv1.Ingress { return &networkingv1.Ingress{} },
+		newList:   func() *networkingv1.IngressList { return &networkingv1.IngressList{} },
+	}
 }
