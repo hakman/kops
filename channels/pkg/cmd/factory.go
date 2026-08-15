@@ -20,18 +20,19 @@ import (
 	"fmt"
 	"net/http"
 
-	"k8s.io/cli-runtime/pkg/genericclioptions"
+	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/restmapper"
+	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/kops/util/pkg/vfs"
 
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 )
 
 type ChannelsFactory struct {
-	configFlags      genericclioptions.ConfigFlags
 	cachedRESTConfig *rest.Config
 	cachedHTTPClient *http.Client
 	vfsContext       *vfs.VFSContext
@@ -46,9 +47,10 @@ func NewChannelsFactory() *ChannelsFactory {
 
 func (f *ChannelsFactory) RESTConfig() (*rest.Config, error) {
 	if f.cachedRESTConfig == nil {
-		clientGetter := genericclioptions.NewConfigFlags(true)
+		clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+			clientcmd.NewDefaultClientConfigLoadingRules(), &clientcmd.ConfigOverrides{})
 
-		restConfig, err := clientGetter.ToRESTConfig()
+		restConfig, err := clientConfig.ClientConfig()
 		if err != nil {
 			return nil, fmt.Errorf("cannot load kubecfg settings: %w", err)
 		}
@@ -78,12 +80,20 @@ func (f *ChannelsFactory) HTTPClient() (*http.Client, error) {
 
 func (f *ChannelsFactory) RESTMapper() (*restmapper.DeferredDiscoveryRESTMapper, error) {
 	if f.restMapper == nil {
-		discoveryClient, err := f.configFlags.ToDiscoveryClient()
+		restConfig, err := f.RESTConfig()
+		if err != nil {
+			return nil, err
+		}
+		httpClient, err := f.HTTPClient()
+		if err != nil {
+			return nil, err
+		}
+		discoveryClient, err := discovery.NewDiscoveryClientForConfigAndClient(restConfig, httpClient)
 		if err != nil {
 			return nil, err
 		}
 
-		restMapper := restmapper.NewDeferredDiscoveryRESTMapper(discoveryClient)
+		restMapper := restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(discoveryClient))
 
 		f.restMapper = restMapper
 	}
