@@ -115,6 +115,26 @@ patches:
           app.kubernetes.io/component: controller
           app.kubernetes.io/name: aws-load-balancer-controller
 
+  # Exempt the default/kubernetes Service from the fail-closed `mservice`
+  # webhook: on a fresh cluster the webhook can register before it has
+  # endpoints, blocking the apiserver's own creation of that Service and
+  # deadlocking bootstrap. has() is needed because generateName Services have
+  # no name yet during admission. The chart has no matchConditions knob
+  # (kubernetes-sigs/aws-load-balancer-controller#4811); the `test` op fails
+  # the build if a chart bump moves the webhook to another index.
+  - target:
+      kind: MutatingWebhookConfiguration
+      name: aws-load-balancer-webhook
+    patch: |
+      - op: test
+        path: /webhooks/2/name
+        value: mservice.elbv2.k8s.aws
+      - op: add
+        path: /webhooks/2/matchConditions
+        value:
+          - name: exclude-apiserver-kubernetes-service
+            expression: '!(request.namespace == "default" && has(object.metadata.name) && object.metadata.name == "kubernetes")'
+
   # The E2E suite runs a test that requires the ALBTargetControlAgent=true feature gate
   # the test is skipped based on the presence of this CRD and the upstream helm chart
   # doesn't offer a way to not render it, so we delete it here instead.

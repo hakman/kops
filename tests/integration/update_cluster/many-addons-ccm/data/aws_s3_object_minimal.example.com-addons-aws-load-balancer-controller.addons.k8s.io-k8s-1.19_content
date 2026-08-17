@@ -3216,6 +3216,10 @@ webhooks:
       namespace: kube-system
       path: /mutate-v1-service
   failurePolicy: Fail
+  matchConditions:
+  - expression: '!(request.namespace == "default" && has(object.metadata.name) &&
+      object.metadata.name == "kubernetes")'
+    name: exclude-apiserver-kubernetes-service
   name: mservice.elbv2.k8s.aws
   namespaceSelector:
     matchExpressions:
@@ -3401,8 +3405,6 @@ webhooks:
   failurePolicy: Fail
   matchPolicy: Equivalent
   name: vingress.elbv2.k8s.aws
-  namespaceSelector: null
-  objectSelector: null
   rules:
   - apiGroups:
     - networking.k8s.io

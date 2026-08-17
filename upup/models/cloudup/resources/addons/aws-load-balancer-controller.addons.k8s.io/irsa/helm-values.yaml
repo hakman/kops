@@ -38,6 +38,7 @@ enableCertManager: true
 
 # Exclude kube-system from the `mservice` webhook so kops-managed Services
 # (e.g. dns-controller) are never routed through the controller.
+# default/kubernetes is exempted separately (see kustomization.yaml).
 serviceMutatorWebhookConfig:
   namespaceSelectors:
     - key: kubernetes.io/metadata.name
