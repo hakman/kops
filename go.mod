@@ -28,6 +28,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/autoscaling v1.72.1
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.321.3
 	github.com/aws/aws-sdk-go-v2/service/ec2instanceconnect v1.35.6
+	github.com/aws/aws-sdk-go-v2/service/ecr v1.60.6
 	github.com/aws/aws-sdk-go-v2/service/elasticloadbalancing v1.36.6
 	github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2 v1.58.7
 	github.com/aws/aws-sdk-go-v2/service/eventbridge v1.48.6
