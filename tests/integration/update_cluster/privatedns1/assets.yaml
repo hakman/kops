@@ -1,10 +1,4 @@
 files:
-- canonical: https://artifacts.k8s.io/binaries/cloud-provider-aws/v1.31.7/linux/amd64/ecr-credential-provider-linux-amd64
-  download: https://artifacts.k8s.io/binaries/cloud-provider-aws/v1.31.7/linux/amd64/ecr-credential-provider-linux-amd64
-  sha: 7644623e4ec9ad443ab352a8a5800a5180ee28741288be805286ba72bb8e7164
-- canonical: https://artifacts.k8s.io/binaries/cloud-provider-aws/v1.31.7/linux/arm64/ecr-credential-provider-linux-arm64
-  download: https://artifacts.k8s.io/binaries/cloud-provider-aws/v1.31.7/linux/arm64/ecr-credential-provider-linux-arm64
-  sha: 1980e3a038cb16da48a137743b31fb81de6c0b59fa06c206c2bc20ce0a52f849
 - canonical: https://dl.k8s.io/release/v1.34.0/bin/linux/amd64/kubectl
   download: https://dl.k8s.io/release/v1.34.0/bin/linux/amd64/kubectl
   sha: cfda68cba5848bc3b6c6135ae2f20ba2c78de20059f68789c090166d6abc3e2c
