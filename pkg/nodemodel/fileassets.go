@@ -22,7 +22,6 @@ import (
 	"net/url"
 	"path"
 
-	"k8s.io/kops/pkg/apis/kops"
 	"k8s.io/kops/pkg/apis/kops/model"
 	"k8s.io/kops/pkg/assets"
 	"k8s.io/kops/pkg/nodemodel/wellknownassets"
@@ -63,41 +62,6 @@ func BuildKubernetesFileAssets(ig model.InstanceGroup, assetBuilder *assets.Asse
 			k.Path = path.Join(k.Path, an)
 
 			asset, err := assetBuilder.RemapFile(k, nil)
-			if err != nil {
-				return nil, err
-			}
-			kubernetesAssets[arch] = append(kubernetesAssets[arch], assets.BuildMirroredAsset(asset))
-		}
-
-		cloudProvider := ig.GetCloudProvider()
-		switch cloudProvider {
-		case kops.CloudProviderGCE:
-			binaryLocation := ig.RawClusterSpec().CloudProvider.GCE.BinariesLocation
-			if binaryLocation == nil {
-				binaryLocation = new("https://artifacts.k8s.io/binaries/cloud-provider-gcp/v35.0.0")
-			}
-
-			u, err := url.Parse(fmt.Sprintf("%s/auth-provider-gcp/linux/%s/auth-provider-gcp", *binaryLocation, arch))
-			if err != nil {
-				return nil, err
-			}
-			asset, err := assetBuilder.RemapFile(u, nil)
-			if err != nil {
-				return nil, err
-			}
-
-			kubernetesAssets[arch] = append(kubernetesAssets[arch], assets.BuildMirroredAsset(asset))
-		case kops.CloudProviderAWS:
-			binaryLocation := ig.RawClusterSpec().CloudProvider.AWS.BinariesLocation
-			if binaryLocation == nil {
-				binaryLocation = new("https://artifacts.k8s.io/binaries/cloud-provider-aws/v1.31.7")
-			}
-
-			u, err := url.Parse(fmt.Sprintf("%s/linux/%s/ecr-credential-provider-linux-%s", *binaryLocation, arch, arch))
-			if err != nil {
-				return nil, err
-			}
-			asset, err := assetBuilder.RemapFile(u, nil)
 			if err != nil {
 				return nil, err
 			}

@@ -237,7 +237,8 @@ type AWSSpec struct {
 	SpotinstProduct     *string `json:"spotinstProduct,omitempty"`
 	SpotinstOrientation *string `json:"spotinstOrientation,omitempty"`
 
-	// BinariesLocation is the location of the AWS cloud provider binaries.
+	// BinariesLocation previously overrode the download location of the AWS kubelet image credential provider.
+	// Deprecated: the credential provider is now built into nodeup and this field is ignored.
 	BinariesLocation *string `json:"binariesLocation,omitempty"`
 }
 
@@ -258,7 +259,8 @@ type GCESpec struct {
 	// UseStartupScript specifies enables using startup-script instead of user-data metadata.
 	UseStartupScript *bool `json:"useStartupScript,omitempty"`
 
-	// BinariesLocation is the location of the GCE cloud provider binaries.
+	// BinariesLocation previously overrode the download location of the GCE kubelet image credential provider.
+	// Deprecated: the credential provider is now built into nodeup and this field is ignored.
 	BinariesLocation *string `json:"binariesLocation,omitempty"`
 }
 
