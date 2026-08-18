@@ -443,6 +443,22 @@ func (b *KubeletBuilder) getGCPCredentialProviderPath() string {
 	return b.binaryPath() + "/gcp-credential-provider"
 }
 
+// buildCredentialProviderSymlinkTask returns a task that symlinks the given
+// credential provider path to the running nodeup binary, which implements the
+// provider when invoked under that name.
+func (b *KubeletBuilder) buildCredentialProviderSymlinkTask(path string) (*nodetasks.File, error) {
+	nodeupPath, err := os.Executable()
+	if err != nil {
+		return nil, fmt.Errorf("finding nodeup executable path: %w", err)
+	}
+
+	return &nodetasks.File{
+		Path:    path,
+		Type:    nodetasks.FileType_Symlink,
+		Symlink: new(nodeupPath),
+	}, nil
+}
+
 // buildManifestDirectory creates the directory where kubelet expects static manifests to reside
 func (b *KubeletBuilder) buildManifestDirectory(kubeletConfig *kops.KubeletConfigSpec) (*nodetasks.File, error) {
 	if kubeletConfig.PodManifestPath == "" {
@@ -607,21 +623,9 @@ func (b *KubeletBuilder) buildSystemdService() *nodetasks.Service {
 // addECRCredentialProvider installs the ECR Kubelet Credential Provider
 func (b *KubeletBuilder) addECRCredentialProvider(c *fi.NodeupModelBuilderContext) error {
 	{
-		assetName := "ecr-credential-provider-linux-" + string(b.Architecture)
-		assetPath := ""
-		asset, err := b.Assets.Find(assetName, assetPath)
+		t, err := b.buildCredentialProviderSymlinkTask(b.getECRCredentialProviderPath())
 		if err != nil {
-			return fmt.Errorf("trying to locate asset %q: %v", assetName, err)
-		}
-		if asset == nil {
-			return fmt.Errorf("unable to locate asset %q", assetName)
-		}
-
-		t := &nodetasks.File{
-			Path:     b.getECRCredentialProviderPath(),
-			Contents: asset,
-			Type:     nodetasks.FileType_File,
-			Mode:     s("0755"),
+			return err
 		}
 		c.AddTask(t)
 	}
@@ -684,21 +688,9 @@ func (b *KubeletBuilder) addECRCredentialProvider(c *fi.NodeupModelBuilderContex
 // addGCPCredentialProvider installs the GCP Kubelet Credential Provider
 func (b *KubeletBuilder) addGCPCredentialProvider(c *fi.NodeupModelBuilderContext) error {
 	{
-		assetName := "auth-provider-gcp"
-		assetPath := ""
-		asset, err := b.Assets.Find(assetName, assetPath)
+		t, err := b.buildCredentialProviderSymlinkTask(b.getGCPCredentialProviderPath())
 		if err != nil {
-			return fmt.Errorf("trying to locate asset %q: %v", assetName, err)
-		}
-		if asset == nil {
-			return fmt.Errorf("unable to locate asset %q", assetName)
-		}
-
-		t := &nodetasks.File{
-			Path:     b.getGCPCredentialProviderPath(),
-			Contents: asset,
-			Type:     nodetasks.FileType_File,
-			Mode:     s("0755"),
+			return err
 		}
 		c.AddTask(t)
 	}
