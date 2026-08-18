@@ -20,11 +20,13 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"k8s.io/klog/v2"
 	"k8s.io/kops"
 	"k8s.io/kops/nodeup/pkg/bootstrap"
+	"k8s.io/kops/nodeup/pkg/credentialprovider"
 	"k8s.io/kops/upup/pkg/fi/nodeup"
 )
 
@@ -34,6 +36,17 @@ const (
 )
 
 func main() {
+	// When invoked through one of the kubelet credential provider symlinks,
+	// speak the exec plugin protocol instead of running nodeup. This must
+	// happen before anything is written to stdout, which is reserved for the
+	// plugin's JSON response.
+	switch filepath.Base(os.Args[0]) {
+	case "ecr-credential-provider":
+		credentialprovider.Main(credentialprovider.NewECRProvider())
+	case "gcp-credential-provider":
+		credentialprovider.Main(credentialprovider.NewGCPProvider())
+	}
+
 	klog.InitFlags(nil)
 	// Opt into the new klog behavior so that -stderrthreshold is honored even
 	// when -logtostderr=true (the default).
