@@ -157,6 +157,7 @@ nav:
     - Releasing With Homebrew: "contributing/homebrew.md"
     - Updating The Default Base AMI: "contributing/update_ami_versions.md"
     - Building: "contributing/building.md"
+    - Binary Size: "contributing/binary-size.md"
     - Adding a feature: "contributing/adding_a_feature.md"
     - Testing: "contributing/testing.md"
     - Testing preview versions: "contributing/test_versions.md"
