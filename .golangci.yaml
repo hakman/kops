@@ -4,10 +4,35 @@ run:
 linters:
   default: none
   enable:
+    - depguard
+    - forbidigo
     - gocritic
     - gosec
     - misspell
   settings:
+    depguard:
+      rules:
+        # A single reachable copy of the stdlib template executor disables
+        # linker method pruning, retaining every exported method of every
+        # reachable type (~80MB per binary).
+        # See docs/contributing/binary-size.md.
+        stdlib-template:
+          deny:
+            # Anchored so that text/template/parse, which contains no
+            # executor, stays importable.
+            - pkg: text/template$
+              desc: use k8s.io/kops/third_party/forked/text/template instead; the stdlib executor defeats linker method pruning (see docs/contributing/binary-size.md)
+            - pkg: html/template$
+              desc: html/template defeats linker method pruning (see docs/contributing/binary-size.md)
+    forbidigo:
+      analyze-types: true
+      forbid:
+        # A MethodByName call with a non-literal argument, or any indexed
+        # Method(i) call, disables linker method pruning (~80MB in the
+        # largest binaries). The allowlisted files below call MethodByName
+        # with string literals only. See docs/contributing/binary-size.md.
+        - pattern: ^reflect\.(Value|Type)\.Method(ByName)?$
+          msg: reflect Method and MethodByName disable linker method pruning unless MethodByName is called with a string literal; only upup/pkg/fi/context.go and upup/pkg/fi/default_methods.go may do that (see docs/contributing/binary-size.md)
     gocritic:
       # Keep gocritic focused on correctness checks for the initial adoption.
       # These checks are mostly style churn in the existing codebase.
@@ -66,6 +91,27 @@ linters:
         # Test fixtures intentionally contain fake keys and tokens.
         path: _test\.go$
         text: "G101:"
+      # Tests are not linked into the shipped binaries, so the binary size
+      # guards do not apply to them.
+      - linters:
+          - depguard
+          - forbidigo
+        path: _test\.go$
+      # The fitask code generator runs at build time and is never shipped.
+      - linters:
+          - depguard
+          - forbidigo
+        path: ^upup/tools/generators/
+      # The fork aliases FuncMap to the stdlib type so caller signatures stay
+      # compatible; a type alias does not make the stdlib executor reachable.
+      - linters:
+          - depguard
+        path: ^third_party/forked/text/template/funcs\.go$
+      # The only files allowed to call MethodByName, with string literals
+      # only so the compiler emits R_USENAMEDMETHOD instead of REFLECTMETHOD.
+      - linters:
+          - forbidigo
+        path: ^upup/pkg/fi/(context|default_methods)\.go$
     paths:
       - ^zz_generated.*
       - third_party$
