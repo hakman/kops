@@ -523,7 +523,7 @@ ko-kops-channels-export: ko-kops-channels-export-linux-amd64 ko-kops-channels-ex
 .PHONY: ko-kube-apiserver-healthcheck-export-linux-amd64 ko-kube-apiserver-healthcheck-export-linux-arm64
 ko-kube-apiserver-healthcheck-export-linux-amd64 ko-kube-apiserver-healthcheck-export-linux-arm64: ko-kube-apiserver-healthcheck-export-linux-%:
 	mkdir -p ${IMAGES}
-	KO_DOCKER_REPO="registry.k8s.io/kops" ${KO} build --tags ${KUBE_APISERVER_HEALTHCHECK_TAG} --platform=linux/$* -B --push=false --tarball=${IMAGES}/kube-apiserver-healthcheck-$*.tar ./cmd/kube-apiserver-healthcheck
+	KO_DOCKER_REPO="registry.k8s.io/kops" GOFLAGS="-tags=${BUILDTAGS}" ${KO} build --tags ${KUBE_APISERVER_HEALTHCHECK_TAG} --platform=linux/$* -B --push=false --tarball=${IMAGES}/kube-apiserver-healthcheck-$*.tar ./cmd/kube-apiserver-healthcheck
 	gzip -f ${IMAGES}/kube-apiserver-healthcheck-$*.tar
 	tools/sha256 ${IMAGES}/kube-apiserver-healthcheck-$*.tar.gz ${IMAGES}/kube-apiserver-healthcheck-$*.tar.gz.sha256
 
@@ -545,7 +545,7 @@ ko-dns-controller-export: ko-dns-controller-export-linux-amd64 ko-dns-controller
 .PHONY: ko-discovery-server-export-linux-amd64 ko-discovery-server-export-linux-arm64
 ko-discovery-server-export-linux-amd64 ko-discovery-server-export-linux-arm64: ko-discovery-server-export-linux-%:
 	mkdir -p ${IMAGES}
-	KO_DOCKER_REPO="registry.k8s.io/kops" ${KO} build --tags ${DISCOVERY_SERVER_TAG} --platform=linux/$* -B --push=false --tarball=${IMAGES}/discovery-server-$*.tar ./discovery/cmd/discovery-server/
+	KO_DOCKER_REPO="registry.k8s.io/kops" GOFLAGS="-tags=${BUILDTAGS}" ${KO} build --tags ${DISCOVERY_SERVER_TAG} --platform=linux/$* -B --push=false --tarball=${IMAGES}/discovery-server-$*.tar ./discovery/cmd/discovery-server/
 	gzip -f ${IMAGES}/discovery-server-$*.tar
 	tools/sha256 ${IMAGES}/discovery-server-$*.tar.gz ${IMAGES}/discovery-server-$*.tar.gz.sha256
 
@@ -756,7 +756,7 @@ kube-apiserver-healthcheck-push: ko-kube-apiserver-healthcheck-push
 
 .PHONY: ko-kube-apiserver-healthcheck-push
 ko-kube-apiserver-healthcheck-push:
-	KO_DOCKER_REPO="${DOCKER_REGISTRY}/${DOCKER_IMAGE_PREFIX}kube-apiserver-healthcheck" ${KO} build --tags ${KUBE_APISERVER_HEALTHCHECK_TAG} --platform=linux/amd64,linux/arm64 --bare ./cmd/kube-apiserver-healthcheck/
+	KO_DOCKER_REPO="${DOCKER_REGISTRY}/${DOCKER_IMAGE_PREFIX}kube-apiserver-healthcheck" GOFLAGS="-tags=${BUILDTAGS}" ${KO} build --tags ${KUBE_APISERVER_HEALTHCHECK_TAG} --platform=linux/amd64,linux/arm64 --bare ./cmd/kube-apiserver-healthcheck/
 
 #------------------------------------------------------
 # discovery-server
@@ -766,7 +766,7 @@ discovery-server-push: ko-discovery-server-push
 
 .PHONY: ko-discovery-server-push
 ko-discovery-server-push:
-	KO_DOCKER_REPO="${DOCKER_REGISTRY}/${DOCKER_IMAGE_PREFIX}discovery-server" ${KO} build --tags ${DISCOVERY_SERVER_TAG} --platform=linux/amd64,linux/arm64 --bare ./discovery/cmd/discovery-server/
+	KO_DOCKER_REPO="${DOCKER_REGISTRY}/${DOCKER_IMAGE_PREFIX}discovery-server" GOFLAGS="-tags=${BUILDTAGS}" ${KO} build --tags ${DISCOVERY_SERVER_TAG} --platform=linux/amd64,linux/arm64 --bare ./discovery/cmd/discovery-server/
 
 #------------------------------------------------------
 # CloudBuild artifacts
