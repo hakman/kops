@@ -17,14 +17,20 @@ limitations under the License.
 package wellknownassets
 
 import (
+	"bytes"
 	"fmt"
 	"net/url"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 
 	"k8s.io/kops"
+	apiskops "k8s.io/kops/pkg/apis/kops"
 	"k8s.io/kops/pkg/assets"
+	"k8s.io/kops/util/pkg/architectures"
 	"k8s.io/kops/util/pkg/hashing"
+	"k8s.io/kops/util/pkg/vfs"
 )
 
 func TestBaseURL_OverridesVersionFromKopsBaseURL(t *testing.T) {
@@ -128,5 +134,85 @@ func Test_BuildMirroredAsset(t *testing.T) {
 				return
 			}
 		})
+	}
+}
+
+func TestNodeUpAssetOCIStagesRawAndXZ(t *testing.T) {
+	originalVersion := kops.Version
+	originalBaseURL := kopsBaseURL
+	originalNodeUpAsset := nodeUpAsset
+	t.Cleanup(func() {
+		kops.Version = originalVersion
+		kopsBaseURL = originalBaseURL
+		nodeUpAsset = originalNodeUpAsset
+	})
+
+	baseDir := filepath.Join(t.TempDir(), "v1.37.0")
+	assetDir := filepath.Join(baseDir, "linux", "amd64")
+	if err := os.MkdirAll(assetDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	raw := []byte("nodeup bytes")
+	compressed := []byte("xz nodeup bytes")
+	rawHash, err := hashing.HashAlgorithmSHA256.Hash(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	compressedHash, err := hashing.HashAlgorithmSHA256.Hash(bytes.NewReader(compressed))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range map[string][]byte{
+		"nodeup":           raw,
+		"nodeup.sha256":    []byte(rawHash.Hex()),
+		"nodeup.xz":        compressed,
+		"nodeup.xz.sha256": []byte(compressedHash.Hex()),
+	} {
+		if err := os.WriteFile(filepath.Join(assetDir, name), data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Setenv("KOPS_BASE_URL", (&url.URL{Scheme: "file", Path: baseDir}).String())
+	kopsBaseURL = nil
+	nodeUpAsset = nil
+	fileRepository := "oci://registry.example.com/optional-prefix"
+	builder := assets.NewAssetBuilder(vfs.NewVFSContext(), &apiskops.AssetsSpec{FileRepository: &fileRepository}, true)
+	asset, err := NodeUpAsset(builder, architectures.ArchitectureAmd64)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !asset.Hash.Equal(rawHash) {
+		t.Errorf("uncompressed hash = %s, want %s", asset.Hash, rawHash)
+	}
+	if len(asset.Locations) != 1 || asset.Locations[0] != "oci://registry.example.com/optional-prefix/nodeup:v1.37.0-amd64" {
+		t.Errorf("locations = %v", asset.Locations)
+	}
+	fileAssets := builder.FileAssets()
+	if len(fileAssets) != 2 {
+		t.Fatalf("file assets = %d, want 2", len(fileAssets))
+	}
+	wantHashes := map[string]*hashing.Hash{
+		"nodeup":    rawHash,
+		"nodeup.xz": compressedHash,
+	}
+	for _, fileAsset := range fileAssets {
+		name := filepath.Base(fileAsset.CanonicalURL.Path)
+		wantHash, ok := wantHashes[name]
+		if !ok {
+			t.Errorf("unexpected staged source %q", fileAsset.CanonicalURL)
+			continue
+		}
+		if !fileAsset.SHAValue.Equal(wantHash) {
+			t.Errorf("staged hash for %s = %s, want %s", name, fileAsset.SHAValue, wantHash)
+		}
+		if got := fileAsset.DownloadURL.String(); got != "oci://registry.example.com/optional-prefix/nodeup:v1.37.0-amd64" {
+			t.Errorf("staged target for %s = %q", name, got)
+		}
+		delete(wantHashes, name)
+	}
+	if len(wantHashes) != 0 {
+		t.Errorf("missing staged sources: %v", wantHashes)
 	}
 }

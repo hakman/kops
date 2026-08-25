@@ -54,6 +54,20 @@ func TestContainerdBuilder_V3(t *testing.T) {
 	runContainerdBuilderTest(t, "v3", distributions.DistributionUbuntu2604)
 }
 
+func TestStandaloneRuncAssetPattern(t *testing.T) {
+	tests := map[string]bool{
+		"/runc": true,
+		"https://github.com/opencontainers/runc/releases/download/v1/runc.amd64": true,
+		"usr/local/sbin/runc": false,
+		"docker/runc":         false,
+	}
+	for assetPath, want := range tests {
+		if got := standaloneRuncAssetPattern.MatchString(assetPath); got != want {
+			t.Errorf("standaloneRuncAssetPattern.MatchString(%q) = %v, want %v", assetPath, got, want)
+		}
+	}
+}
+
 func TestContainerdBuilder_BuildFlags(t *testing.T) {
 	grid := []struct {
 		config   kops.ContainerdConfig
@@ -163,6 +177,7 @@ func runContainerdBuilderTest(t *testing.T, key string, distro distributions.Dis
 	nodeUpModelContext.Assets.AddForTest("containerd-stress", "bin/containerd-stress", "testing containerd content")
 	nodeUpModelContext.Assets.AddForTest("ctr", "bin/ctr", "testing containerd content")
 	nodeUpModelContext.Assets.AddForTest("runc.amd64", "https://github.com/opencontainers/runc/releases/download/v1.1.0/runc.amd64", "testing runc content")
+	nodeUpModelContext.Assets.AddForTest("bundled-runc", "usr/local/sbin/runc", "testing bundled runc content")
 
 	if err := nodeUpModelContext.Init(); err != nil {
 		t.Fatalf("error from nodeupModelContext.Init(): %v", err)

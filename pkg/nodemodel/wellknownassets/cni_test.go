@@ -59,6 +59,40 @@ func Test_FindCNIAssetFromEnvironmentVariable(t *testing.T) {
 	}
 }
 
+func TestFindCNIAssetsUsesSelectedVersionInOCIReference(t *testing.T) {
+	t.Setenv(ENV_VAR_CNI_ASSET_URL, "")
+	t.Setenv(ENV_VAR_CNI_ASSET_HASH, "")
+	repository := "oci://registry.example.com/prefix"
+	for _, test := range []struct {
+		kubernetesVersion string
+		cniVersion        string
+	}{
+		{kubernetesVersion: "v1.32.0", cniVersion: "1.6.2"},
+		{kubernetesVersion: "v1.34.0", cniVersion: "1.7.1"},
+		{kubernetesVersion: "v1.35.0", cniVersion: "1.8.0"},
+		{kubernetesVersion: "v1.36.0", cniVersion: "1.9.1"},
+	} {
+		t.Run(test.kubernetesVersion, func(t *testing.T) {
+			cluster := &api.Cluster{Spec: api.ClusterSpec{
+				KubernetesVersion: test.kubernetesVersion,
+				Assets:            &api.AssetsSpec{FileRepository: &repository},
+			}}
+			igModel, err := kopsmodel.ForInstanceGroup(cluster, &api.InstanceGroup{})
+			if err != nil {
+				t.Fatalf("building instance group model: %v", err)
+			}
+			asset, err := FindCNIAssets(igModel, assets.NewAssetBuilder(vfs.Context, cluster.Spec.Assets, false), architectures.ArchitectureAmd64)
+			if err != nil {
+				t.Fatalf("FindCNIAssets() error = %v", err)
+			}
+			want := "oci://registry.example.com/prefix/cni-plugins:v" + test.cniVersion + "-amd64"
+			if got := asset.DownloadURL.String(); got != want {
+				t.Fatalf("DownloadURL = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
 func Test_FindCNIAssetFromDefaults134(t *testing.T) {
 	desiredCNIVersionURL := "https://github.com/containernetworking/plugins/releases/download/v1.7.1/cni-plugins-linux-amd64-v1.7.1.tgz"
 	desiredCNIVersionHash := "sha256:1a28a0506bfe5bcdc981caf1a49eeab7e72da8321f1119b7be85f22621013098"

@@ -26,6 +26,7 @@ import (
 )
 
 const (
+	crictlVersion       = "1.29.0"
 	crictlAssetUrlAmd64 = "https://github.com/kubernetes-sigs/cri-tools/releases/download/v1.29.0/crictl-v1.29.0-linux-amd64.tar.gz"
 	crictlAssetUrlArm64 = "https://github.com/kubernetes-sigs/cri-tools/releases/download/v1.29.0/crictl-v1.29.0-linux-arm64.tar.gz"
 )
@@ -46,7 +47,11 @@ func FindCrictlAsset(ig model.InstanceGroup, assetBuilder *assets.AssetBuilder, 
 		return nil, fmt.Errorf("unable to parse crictl binaries asset URL %q: %v", assetURL, err)
 	}
 
-	asset, err := assetBuilder.RemapFile(u, nil)
+	asset, err := assetBuilder.RemapFileWithInfo(u, nil, assets.FileAssetInfo{
+		Family:       "crictl",
+		Version:      crictlVersion,
+		Architecture: string(arch),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("unable to remap crictl binaries asset: %v", err)
 	}

@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"net/url"
 	"path"
+	"strings"
 
 	"k8s.io/kops/pkg/apis/kops"
 	"k8s.io/kops/pkg/apis/kops/model"
@@ -62,7 +63,16 @@ func BuildKubernetesFileAssets(ig model.InstanceGroup, assetBuilder *assets.Asse
 			}
 			k.Path = path.Join(k.Path, an)
 
-			asset, err := assetBuilder.RemapFile(k, nil)
+			name := path.Base(an)
+			version := ""
+			if !kubernetesVersion.IsBaseURL() {
+				version = kubernetesVersion.String()
+			}
+			asset, err := assetBuilder.RemapFileWithInfo(k, nil, assets.FileAssetInfo{
+				Family:       name,
+				Version:      version,
+				Architecture: string(arch),
+			})
 			if err != nil {
 				return nil, err
 			}
@@ -81,7 +91,11 @@ func BuildKubernetesFileAssets(ig model.InstanceGroup, assetBuilder *assets.Asse
 			if err != nil {
 				return nil, err
 			}
-			asset, err := assetBuilder.RemapFile(u, nil)
+			asset, err := assetBuilder.RemapFileWithInfo(u, nil, assets.FileAssetInfo{
+				Family:       "auth-provider-gcp",
+				Version:      versionAtEnd(*binaryLocation),
+				Architecture: string(arch),
+			})
 			if err != nil {
 				return nil, err
 			}
@@ -97,7 +111,11 @@ func BuildKubernetesFileAssets(ig model.InstanceGroup, assetBuilder *assets.Asse
 			if err != nil {
 				return nil, err
 			}
-			asset, err := assetBuilder.RemapFile(u, nil)
+			asset, err := assetBuilder.RemapFileWithInfo(u, nil, assets.FileAssetInfo{
+				Family:       "ecr-credential-provider",
+				Version:      versionAtEnd(*binaryLocation),
+				Architecture: string(arch),
+			})
 			if err != nil {
 				return nil, err
 			}
@@ -152,6 +170,18 @@ func BuildKubernetesFileAssets(ig model.InstanceGroup, assetBuilder *assets.Asse
 	return &KubernetesFileAssets{
 		KubernetesFileAssets: kubernetesAssets,
 	}, nil
+}
+
+func versionAtEnd(location string) string {
+	u, err := url.Parse(location)
+	if err != nil {
+		return ""
+	}
+	v := path.Base(strings.TrimSuffix(u.Path, "/"))
+	if strings.HasPrefix(v, "v") {
+		return v
+	}
+	return ""
 }
 
 // NodeUpAssets are the assets for downloading nodeup

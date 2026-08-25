@@ -21,7 +21,9 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"strings"
 
+	"github.com/blang/semver/v4"
 	"k8s.io/klog/v2"
 	"k8s.io/kops"
 	"k8s.io/kops/pkg/assets"
@@ -34,8 +36,13 @@ const (
 
 var kopsBaseURL *url.URL
 
+type cachedKopsAsset struct {
+	architecture   architectures.Architecture
+	fileRepository string
+}
+
 // nodeUpAsset caches the nodeup binary download url/hash
-var nodeUpAsset map[architectures.Architecture]*assets.MirroredAsset
+var nodeUpAsset map[cachedKopsAsset]*assets.MirroredAsset
 
 // BaseURL returns the base url for the distribution of kops - in particular for nodeup & docker images
 func BaseURL() (*url.URL, error) {
@@ -85,29 +92,35 @@ func copyBaseURL(base *url.URL) (*url.URL, error) {
 // NodeUpAsset returns the asset for where nodeup should be downloaded
 func NodeUpAsset(assetsBuilder *assets.AssetBuilder, arch architectures.Architecture) (*assets.MirroredAsset, error) {
 	if nodeUpAsset == nil {
-		nodeUpAsset = make(map[architectures.Architecture]*assets.MirroredAsset)
+		nodeUpAsset = make(map[cachedKopsAsset]*assets.MirroredAsset)
 	}
-	if nodeUpAsset[arch] != nil {
+	key := cachedKopsAsset{architecture: arch, fileRepository: assetsBuilder.FileRepository()}
+	if nodeUpAsset[key] != nil {
 		// Avoid repeated logging
-		klog.V(8).Infof("Using cached nodeup location for %s: %v", arch, nodeUpAsset[arch].Locations)
-		return nodeUpAsset[arch], nil
+		klog.V(8).Infof("Using cached nodeup location for %s: %v", arch, nodeUpAsset[key].Locations)
+		return nodeUpAsset[key], nil
 	}
 
-	asset, err := KopsFileURL(fmt.Sprintf("linux/%s/nodeup", arch), assetsBuilder)
+	file := fmt.Sprintf("linux/%s/nodeup", arch)
+	asset, err := KopsFileURL(file, assetsBuilder)
 	if err != nil {
 		return nil, err
 	}
-	// Nodes download the xz-compressed binary, so when assets are mirrored to a file
-	// repository, register it as well for `kops get assets --copy` to include it.
-	if assetsBuilder.HasFileRepository() {
-		if _, err := KopsFileURL(fmt.Sprintf("linux/%s/nodeup.xz", arch), assetsBuilder); err != nil {
+	stageCompressed := assetsBuilder.HasFileRepository()
+	if stageCompressed && strings.HasPrefix(assetsBuilder.FileRepository(), "oci://") {
+		// Releases before 1.37 did not publish nodeup.xz.
+		version, err := semver.ParseTolerant(kops.Version)
+		stageCompressed = err == nil && (version.Major > 1 || version.Major == 1 && version.Minor >= 37)
+	}
+	if stageCompressed {
+		if _, err := KopsFileURL(file+".xz", assetsBuilder); err != nil {
 			return nil, err
 		}
 	}
-	nodeUpAsset[arch] = assets.BuildMirroredAsset(asset)
+	nodeUpAsset[key] = assets.BuildMirroredAsset(asset)
 	klog.V(8).Infof("Using default nodeup location for %s: %q", arch, asset.DownloadURL.String())
 
-	return nodeUpAsset[arch], nil
+	return nodeUpAsset[key], nil
 }
 
 // KopsFileURL returns the base url for the distribution of kops - in particular for nodeup & docker images
@@ -119,7 +132,12 @@ func KopsFileURL(file string, assetBuilder *assets.AssetBuilder) (*assets.FileAs
 
 	base.Path = path.Join(base.Path, file)
 
-	asset, err := assetBuilder.RemapFile(base, nil)
+	name := strings.TrimSuffix(path.Base(file), ".xz")
+	asset, err := assetBuilder.RemapFileWithInfo(base, nil, assets.FileAssetInfo{
+		Family:       name,
+		Version:      kops.Version,
+		Architecture: path.Base(path.Dir(file)),
+	})
 	if err != nil {
 		return nil, err
 	}

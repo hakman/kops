@@ -25,6 +25,7 @@ import (
 )
 
 const (
+	nerdctlVersion        = "1.7.4"
 	nerdctlAssetUrlAmd64  = "https://github.com/containerd/nerdctl/releases/download/v1.7.4/nerdctl-1.7.4-linux-amd64.tar.gz"
 	nerdctlAssetUrlArm64  = "https://github.com/containerd/nerdctl/releases/download/v1.7.4/nerdctl-1.7.4-linux-arm64.tar.gz"
 	nerdctlAssetHashAmd64 = "71aee9d987b7fad0ff2ade50b038ad7e2356324edc02c54045960a3521b3e6a7"
@@ -44,5 +45,9 @@ func FindNerdctlAsset(ig model.InstanceGroup, assetBuilder *assets.AssetBuilder,
 		return nil, fmt.Errorf("unknown arch for nerdctl binaries asset: %s", arch)
 	}
 
-	return buildFileAsset(assetBuilder, assetURL, assetHash)
+	return buildFileAsset(assetBuilder, assetURL, assetHash, assets.FileAssetInfo{
+		Family:       "nerdctl",
+		Version:      nerdctlVersion,
+		Architecture: string(arch),
+	})
 }
