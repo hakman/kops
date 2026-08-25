@@ -12,9 +12,9 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
-NODEUP_URL_AMD64=https://artifacts.k8s.io/binaries/kops/1.34.0-beta.1/linux/amd64/nodeup,https://github.com/kubernetes/kops/releases/download/v1.34.0-beta.1/nodeup-linux-amd64
+NODEUP_URL_AMD64=oci://registry.example.com/optional-prefix/nodeup:v1.34.0-beta.1-amd64
 NODEUP_HASH_AMD64=c86e072f622b91546b7b3f3cb1a0f8a131e48b966ad018a0ac1520ceedf37725
-NODEUP_URL_ARM64=https://artifacts.k8s.io/binaries/kops/1.34.0-beta.1/linux/arm64/nodeup,https://github.com/kubernetes/kops/releases/download/v1.34.0-beta.1/nodeup-linux-arm64
+NODEUP_URL_ARM64=oci://registry.example.com/optional-prefix/nodeup:v1.34.0-beta.1-arm64
 NODEUP_HASH_ARM64=64a9a9510538a449e85d05e13e3cd98b80377d68a673447c26821d40f00f0075
 
 export AWS_REGION=us-test-1
@@ -39,6 +39,12 @@ function ensure-install-dir() {
   cd ${INSTALL_DIR}
 }
 
+# Extract a string field from a JSON object. args: json, field
+json-field() {
+  local pattern="\"$2\"[[:space:]]*:[[:space:]]*\"([^\"]+)\""
+  [[ $1 =~ $pattern ]] && printf '%s' "${BASH_REMATCH[1]}"
+}
+
 # Retry a download until we get it. sha covers the uncompressed binary. args: name, sha, urls
 download-or-bust() {
   echo "== Downloading $1 with hash $2 from $3 =="
@@ -57,20 +63,44 @@ download-or-bust() {
 
   while true; do
     for url in "${urls[@]}"; do
-      echo "== Downloading ${url}.xz =="
-      if ! curl -f -Lo "${file}.xz" --connect-timeout 20 --retry 6 --retry-delay 10 "${url}.xz"; then
-        echo "== Failed to download ${url}.xz =="
-        rm -f "${file}.xz"
-      elif ! xz -d "${file}.xz"; then
-        echo "== Failed to decompress ${url}.xz =="
-        rm -f "${file}" "${file}.xz"
-      elif ! validate-hash "${file}" "${hash}"; then
-        echo "== Failed to validate decompressed hash for ${url}.xz =="
-        rm -f "${file}"
-      else
-        echo "== Downloaded ${url}.xz and validated decompressed hash ${hash} =="
+      echo "== Downloading ${url} =="
+      local without_scheme registry tagged_repository repository blob headers challenge realm service response token
+      local -a token_args
+      without_scheme="${url#oci://}"
+      registry="${without_scheme%%/*}"
+      tagged_repository="${without_scheme#*/}"
+      repository="${tagged_repository%:*}"
+      blob="https://${registry}/v2/${repository}/blobs/sha256:${hash}"
+
+      if headers=$(curl -fsSL -D - -o "${file}" --proto '=https' --proto-redir '=https' --connect-timeout 20 --retry 6 --retry-delay 10 "${blob}") && validate-hash "${file}" "${hash}"; then
         return 0
       fi
+
+      challenge=$(printf '%s\n' "${headers}" | tr -d '\r' | sed -n 's/^[Ww][Ww][Ww]-[Aa]uthenticate:[[:space:]]*//p' | sed -n 's/.*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]][[:space:]]*//p' | head -n 1)
+      realm=""
+      service=""
+      if [[ "${challenge}" =~ (^|,[[:space:]]*)[Rr][Ee][Aa][Ll][Mm][[:space:]]*=[[:space:]]*\"([^\"]+)\" ]]; then
+        realm="${BASH_REMATCH[2]}"
+      fi
+      if [[ "${challenge}" =~ (^|,[[:space:]]*)[Ss][Ee][Rr][Vv][Ii][Cc][Ee][[:space:]]*=[[:space:]]*\"([^\"]+)\" ]]; then
+        service="${BASH_REMATCH[2]}"
+      fi
+      if [[ -n "${realm}" && "${realm}" == https://* ]]; then
+        token_args=(--data-urlencode "scope=repository:${repository}:pull")
+        if [[ -n "${service}" ]]; then
+          token_args+=(--data-urlencode "service=${service}")
+        fi
+        if response=$(curl -fsS -L --get "${token_args[@]}" --proto '=https' --proto-redir '=https' --connect-timeout 20 --max-time 120 --retry 6 --retry-delay 10 "${realm}"); then
+          token=""
+          if ! token=$(json-field "${response}" token); then
+            token=$(json-field "${response}" access_token) || true
+          fi
+          if [[ -n "${token}" ]] && curl -fsSL -o "${file}" --oauth2-bearer "${token}" --proto '=https' --proto-redir '=https' --connect-timeout 20 --retry 6 --retry-delay 10 "${blob}" && validate-hash "${file}" "${hash}"; then
+            return 0
+          fi
+        fi
+      fi
+      rm -f "${file}"
     done
 
     echo "== All downloads failed; sleeping before retrying =="
@@ -129,7 +159,7 @@ ClusterName: complex.example.com
 ConfigBase: memfs://clusters.example.com/complex.example.com
 InstanceGroupName: master-us-test-1a
 InstanceGroupRole: ControlPlane
-NodeupConfigHash: MLZxXi2kSRFC6nrEWWf8ZdxAVYqreztMoFAfGIiYZKc=
+NodeupConfigHash: J6ldwP7dPrA6+yIm0iHNaCdRkcP1LqgZ+gbFnRLA93o=
 
 __EOF_KUBE_ENV
 

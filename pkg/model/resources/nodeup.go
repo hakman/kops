@@ -82,7 +82,7 @@ imds-get() {
 }
 {{- end }}
 
-{{- if or UseGCSDownload UseS3Download UseBlobDownload }}
+{{- if or UseGCSDownload UseS3Download UseBlobDownload UseOCIDownload }}
 
 # Extract a string field from a JSON object. args: json, field
 json-field() {
@@ -109,7 +109,7 @@ download-or-bust() {
 
   while true; do
     for url in "${urls[@]}"; do
-      echo "== Downloading ${url}.xz =="
+      echo "== Downloading ${url}{{ if not UseOCIDownload }}.xz{{ end }} =="
 {{- if UseGCSDownload }}
       local response token
       # Use the IP of the metadata server, to not depend on DNS this early in boot
@@ -156,11 +156,50 @@ download-or-bust() {
           "https://s3.{{ S3Region }}.amazonaws.com/${url#s3://}.xz"; then
         echo "== Failed to download ${url}.xz =="
         rm -f "${file}.xz"
+{{- else if UseOCIDownload }}
+      local without_scheme registry tagged_repository repository blob headers challenge realm service response token
+      local -a token_args
+      without_scheme="${url#oci://}"
+      registry="${without_scheme%%/*}"
+      tagged_repository="${without_scheme#*/}"
+      repository="${tagged_repository%:*}"
+      blob="https://${registry}/v2/${repository}/blobs/sha256:${hash}"
+
+      if headers=$(curl -fsSL -D - -o "${file}" --proto '=https' --proto-redir '=https' --connect-timeout 20 --retry 6 --retry-delay 10 "${blob}") && validate-hash "${file}" "${hash}"; then
+        return 0
+      fi
+
+      challenge=$(printf '%s\n' "${headers}" | tr -d '\r' | sed -n 's/^[Ww][Ww][Ww]-[Aa]uthenticate:[[:space:]]*//p' | sed -n 's/.*[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]][[:space:]]*//p' | head -n 1)
+      realm=""
+      service=""
+      if [[ "${challenge}" =~ (^|,[[:space:]]*)[Rr][Ee][Aa][Ll][Mm][[:space:]]*=[[:space:]]*\"([^\"]+)\" ]]; then
+        realm="${BASH_REMATCH[2]}"
+      fi
+      if [[ "${challenge}" =~ (^|,[[:space:]]*)[Ss][Ee][Rr][Vv][Ii][Cc][Ee][[:space:]]*=[[:space:]]*\"([^\"]+)\" ]]; then
+        service="${BASH_REMATCH[2]}"
+      fi
+      if [[ -n "${realm}" && "${realm}" == https://* ]]; then
+        token_args=(--data-urlencode "scope=repository:${repository}:pull")
+        if [[ -n "${service}" ]]; then
+          token_args+=(--data-urlencode "service=${service}")
+        fi
+        if response=$(curl -fsS -L --get "${token_args[@]}" --proto '=https' --proto-redir '=https' --connect-timeout 20 --max-time 120 --retry 6 --retry-delay 10 "${realm}"); then
+          token=""
+          if ! token=$(json-field "${response}" token); then
+            token=$(json-field "${response}" access_token) || true
+          fi
+          if [[ -n "${token}" ]] && curl -fsSL -o "${file}" --oauth2-bearer "${token}" --proto '=https' --proto-redir '=https' --connect-timeout 20 --retry 6 --retry-delay 10 "${blob}" && validate-hash "${file}" "${hash}"; then
+            return 0
+          fi
+        fi
+      fi
+      rm -f "${file}"
 {{- else }}
       if ! curl -f -Lo "${file}.xz" --connect-timeout 20 --retry 6 --retry-delay 10 "${url}.xz"; then
         echo "== Failed to download ${url}.xz =="
         rm -f "${file}.xz"
 {{- end }}
+{{- if not UseOCIDownload }}
       elif ! xz -d "${file}.xz"; then
         echo "== Failed to decompress ${url}.xz =="
         rm -f "${file}" "${file}.xz"
@@ -171,6 +210,7 @@ download-or-bust() {
         echo "== Downloaded ${url}.xz and validated decompressed hash ${hash} =="
         return 0
       fi
+{{- end }}
     done
 
     echo "== All downloads failed; sleeping before retrying =="
@@ -254,6 +294,15 @@ type NodeUpScript struct {
 	// S3Region is baked into the script because SigV4 requires the bucket's actual region, which
 	// an s3:// URL does not include.
 	S3Region string
+}
+
+func (b *NodeUpScript) hasOCINodeup() bool {
+	for _, asset := range b.NodeUpAssets {
+		if asset != nil && len(asset.Locations) > 0 && strings.HasPrefix(asset.Locations[0], "oci://") {
+			return true
+		}
+	}
+	return false
 }
 
 func funcEmptyString() (string, error) {
@@ -382,6 +431,7 @@ func (b *NodeUpScript) Build() (fi.Resource, error) {
 		"UseGCSDownload":  b.useGCSDownload,
 		"UseS3Download":   b.useS3Download,
 		"UseBlobDownload": b.useBlobDownload,
+		"UseOCIDownload":  b.hasOCINodeup,
 		"S3Region":        func() string { return b.S3Region },
 	}
 

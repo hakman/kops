@@ -379,3 +379,115 @@ func verifyShellSyntax(t *testing.T, script string) {
 		t.Errorf("rendered script is not valid bash: %v\n%s", err, output)
 	}
 }
+
+func TestNodeUpBootstrapOCI(t *testing.T) {
+	script := &NodeUpScript{
+		NodeUpAssets: map[architectures.Architecture]*assets.MirroredAsset{
+			architectures.ArchitectureAmd64: {
+				Locations: []string{
+					"oci://registry.example.com/prefix/nodeup:v1.2.3-amd64",
+					"oci://mirror.example.com/prefix/nodeup:v1.2.3-amd64",
+				},
+				Hash: hashing.MustFromString("9acf6a83b249649354bb15b04250fabce0f8ff2377f2f0d4788e3fdda3f572a3"),
+			},
+		},
+	}
+	rendered := renderNodeUpScript(t, script)
+	for _, want := range []string{
+		`/v2/${repository}/blobs/sha256:${hash}`,
+		`scope=repository:${repository}:pull`,
+		`--oauth2-bearer "${token}"`,
+		`--proto '=https' --proto-redir '=https'`,
+		`[[ -n "${realm}" && "${realm}" == https://* ]]`,
+	} {
+		if !strings.Contains(rendered, want) {
+			t.Errorf("bootstrap script does not contain %q", want)
+		}
+	}
+	if strings.Contains(rendered, "/manifests/") {
+		t.Error("bootstrap script resolves an OCI manifest")
+	}
+	if strings.Contains(rendered, ".xz") {
+		t.Error("OCI bootstrap script downloads compressed nodeup")
+	}
+}
+
+func TestNodeUpBootstrapOCIUsesCurlBearerRedirects(t *testing.T) {
+	hash := hashing.MustFromString("833723369ad345a88dd85d61b1e77336d56e61b864557ded71b92b6e34158e6a")
+	script := &NodeUpScript{
+		NodeUpAssets: map[architectures.Architecture]*assets.MirroredAsset{
+			architectures.ArchitectureAmd64: {
+				Locations: []string{"oci://registry.example.com/prefix/nodeup:v1.2.3-amd64"},
+				Hash:      hash,
+			},
+		},
+	}
+	rendered := renderNodeUpScript(t, script)
+	jsonStart := strings.Index(rendered, "json-field() {")
+	if jsonStart == -1 {
+		t.Fatal("rendered bootstrap script does not contain json-field()")
+	}
+	jsonEnd := strings.Index(rendered[jsonStart:], "\n}\n\n# Retry a download")
+	if jsonEnd == -1 {
+		t.Fatal("rendered bootstrap script does not contain the end of json-field()")
+	}
+	jsonField := rendered[jsonStart : jsonStart+jsonEnd+2]
+	start := strings.Index(rendered, "download-or-bust() {")
+	if start == -1 {
+		t.Fatal("rendered bootstrap script does not contain download-or-bust()")
+	}
+	end := strings.Index(rendered[start:], "\n}\n\nvalidate-hash() {")
+	if end == -1 {
+		t.Fatal("rendered bootstrap script does not contain the end of download-or-bust()")
+	}
+	download := rendered[start : start+end+2]
+
+	testScript := `#!/bin/bash
+set -o errexit
+set -o nounset
+set -o pipefail
+
+curl() {
+  local has_bearer=false has_get=false has_redirect=false
+  local arg last
+  for arg in "$@"; do
+    last="${arg}"
+    [[ "${arg}" == "--oauth2-bearer" ]] && has_bearer=true
+    [[ "${arg}" == "--get" ]] && has_get=true
+    [[ "${arg}" == *L* && "${arg}" == -* ]] && has_redirect=true
+  done
+  if [[ "${has_get}" == true ]]; then
+    [[ " $* " == *" --connect-timeout 20 "* ]] || return 1
+    [[ " $* " == *" --max-time 120 "* ]] || return 1
+    [[ " $* " == *" --retry 6 "* ]] || return 1
+    [[ " $* " == *" --retry-delay 10 "* ]] || return 1
+    [[ "${last}" == "https://auth.example.com/token?audience=assets,public" ]] || return 1
+    echo '{"token":"pull-token"}'
+  elif [[ "${has_bearer}" == true ]]; then
+    [[ "${has_redirect}" == true ]] || return 1
+    [[ " $* " == *" --oauth2-bearer pull-token "* ]] || return 1
+    printf 'redirected bytes' > "${output}"
+  else
+    printf 'WWW-Authenticate: Basic realm="separate"\r\nWWW-Authenticate: bEaReR ReAlM = "https://auth.example.com/token?audience=assets,public", SeRvIcE= "registry", Basic realm="legacy"\r\n'
+    return 22
+  fi
+}
+validate-hash() {
+  return 0
+}
+` + jsonField + `
+` + download + `
+
+output="${1}"
+download-or-bust "${output}" "833723369ad345a88dd85d61b1e77336d56e61b864557ded71b92b6e34158e6a" "oci://registry.example.com/prefix/nodeup:v1.2.3-amd64"
+[[ "$(cat "${1}")" == "redirected bytes" ]]
+`
+	filename := filepath.Join(t.TempDir(), "test-oci-redirect.sh")
+	if err := os.WriteFile(filename, []byte(testScript), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.Join(t.TempDir(), "nodeup")
+	if b, err := exec.Command("bash", filename, output).CombinedOutput(); err != nil {
+		t.Fatalf("redirect test failed: %v\n%s", err, b)
+	}
+}
