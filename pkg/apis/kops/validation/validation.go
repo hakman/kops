@@ -41,6 +41,7 @@ import (
 	netutils "k8s.io/utils/net"
 
 	"k8s.io/kops/pkg/apis/kops"
+	assetoci "k8s.io/kops/pkg/assets/oci"
 	"k8s.io/kops/pkg/model/components"
 	"k8s.io/kops/pkg/model/iam"
 	"k8s.io/kops/upup/pkg/fi"
@@ -815,8 +816,17 @@ func validateFileRepository(s string, fieldPath *field.Path, cloudProvider kops.
 		if container, _, _ := strings.Cut(strings.TrimPrefix(u.Path, "/"), "/"); container == "" {
 			allErrs = append(allErrs, field.Invalid(fieldPath, s, "azureblob:// fileRepository must include a container: azureblob://<account>/<container>/<path>"))
 		}
+	case "oci":
+		if u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+			allErrs = append(allErrs, field.Invalid(fieldPath, s, "OCI fileRepository cannot contain credentials, a query, or a fragment"))
+		}
+		for _, component := range strings.Split(strings.Trim(u.Path, "/"), "/") {
+			if component != "" && !assetoci.IsRepositoryComponent(component) {
+				allErrs = append(allErrs, field.Invalid(fieldPath, s, fmt.Sprintf("invalid OCI repository prefix component %q", component)))
+			}
+		}
 	default:
-		allErrs = append(allErrs, field.Invalid(fieldPath, s, "fileRepository must be an http://, https://, gs://, s3://, or azureblob:// URL"))
+		allErrs = append(allErrs, field.Invalid(fieldPath, s, "fileRepository must be an http://, https://, gs://, s3://, azureblob://, or oci:// URL"))
 	}
 	if u.Host == "" {
 		allErrs = append(allErrs, field.Invalid(fieldPath, s, "fileRepository must include a host"))

@@ -2422,6 +2422,19 @@ func TestValidateFileRepository(t *testing.T) {
 			Input:          "https://",
 			ExpectedErrors: []string{"Invalid value::spec.assets.fileRepository"},
 		},
+		{Input: "oci://registry.example.com"},
+		{Input: "oci://registry.example.com/optional-prefix"},
+		{Input: "oci://registry.example.com/prefix__name/assets--team"},
+		{Input: "oci://localhost:5000/team/assets"},
+		{Input: "oci://registry/prefix"},
+		{
+			Input:          "oci://registry.example.com/Uppercase",
+			ExpectedErrors: []string{"Invalid value::spec.assets.fileRepository"},
+		},
+		{
+			Input:          "oci://registry.example.com/prefix?query=true",
+			ExpectedErrors: []string{"Invalid value::spec.assets.fileRepository"},
+		},
 	}
 	for _, g := range grid {
 		errs := validateFileRepository(g.Input, field.NewPath("spec", "assets", "fileRepository"), g.CloudProvider)

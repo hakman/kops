@@ -57,6 +57,26 @@ func Copy(imageAssets []*assets.ImageAsset, fileAssets []*assets.FileAsset, vfsC
 
 	for _, fileAsset := range fileAssets {
 		if fileAsset.DownloadURL.String() != fileAsset.CanonicalURL.String() {
+			if fileAsset.DownloadURL.Scheme == "oci" {
+				task := &copyOCIAsset{
+					sources: []ociAssetSource{{
+						location: fileAsset.CanonicalURL.String(),
+						sha256:   fileAsset.SHAValue.Hex(),
+					}},
+					target: fileAsset.DownloadURL.String(),
+					vfs:    vfsContext,
+				}
+				if existing, ok := tasks[task.target]; ok {
+					other, ok := existing.(*copyOCIAsset)
+					if !ok {
+						return fmt.Errorf("multiple assets map to OCI tag %s", task.target)
+					}
+					other.addSource(task.sources[0])
+					continue
+				}
+				tasks[task.target] = task
+				continue
+			}
 			copyFileTask := &CopyFile{
 				Name:       fileAsset.CanonicalURL.String(),
 				TargetFile: fileAsset.DownloadURL.String(),

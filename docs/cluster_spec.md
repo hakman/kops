@@ -1500,6 +1500,29 @@ spec:
     containerProxy: proxy.example.com
 ```
 
+### OCI file repository
+
+`fileRepository` can point to an OCI registry, with an optional repository prefix:
+
+```yaml
+spec:
+  assets:
+    fileRepository: oci://registry.example.com/optional-prefix
+```
+
+Each asset family has a stable repository below the prefix. Tags contain the asset version and,
+for architecture-specific files, the architecture; for example
+`registry.example.com/optional-prefix/containerd:v2.2.4-amd64`. If no version is known, kOps uses
+a deterministic tag derived from the file SHA-256. Nodes download the blob directly by SHA-256 and
+do not resolve the tag or manifest.
+
+Staging uses credentials from the operator's standard local registry configuration. Node downloads
+are anonymous, so the repositories must allow anonymous pulls. OCI registry and token endpoints must
+use HTTPS. Run `kops get assets --copy` before applying OCI-backed configuration. Existing tags are
+treated as immutable and staging fails if a tag points to different content. Publish changed bytes
+under a distinct logical asset version. For local builds, set a unique build version before staging;
+remove a conflicting registry tag only after verifying that no cluster relies on it.
+
 ## sysctlParameters
 {{ kops_feature_table(kops_added_default='1.17') }}
 
