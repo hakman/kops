@@ -169,6 +169,22 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
+  name: csi-gce-pd-node-deploy
+rules:
+# The node driver reads its own Node object to look up the data cache and
+# volume attach limit labels. Upstream also grants "use" on the node
+# PodSecurityPolicy here, which is omitted because PSP no longer exists.
+- apiGroups:
+  - ""
+  resources:
+  - nodes
+  verbs:
+  - get
+  - list
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
   name: csi-gce-pd-provisioner-role
 rules:
 - apiGroups:
@@ -194,6 +210,14 @@ rules:
   - storage.k8s.io
   resources:
   - storageclasses
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - storage.k8s.io
+  resources:
+  - volumeattributesclasses
   verbs:
   - get
   - list
@@ -277,6 +301,14 @@ rules:
   verbs:
   - update
   - patch
+- apiGroups:
+  - storage.k8s.io
+  resources:
+  - volumeattributesclasses
+  verbs:
+  - get
+  - list
+  - watch
 - apiGroups:
   - ""
   resources:
