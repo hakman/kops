@@ -41,8 +41,56 @@ spec:
       k8s-addon: storage-gce.addons.k8s.io
   - id: k8s-1.23
     manifest: gcp-pd-csi-driver.addons.k8s.io/k8s-1.23.yaml
-    manifestHash: c897bee1857fa152f1abac83f90d55d0f2e500e92dde185fecb3e4394025217e
+    manifestHash: a7d19ca9afe3fc8d25b34d4344fb5e2ccd8c21b38ad829412d47524bc6e8c112
     name: gcp-pd-csi-driver.addons.k8s.io
+    prune:
+      kinds:
+      - kind: ConfigMap
+        labelSelector: addon.kops.k8s.io/name=gcp-pd-csi-driver.addons.k8s.io,app.kubernetes.io/managed-by=kops
+      - kind: Service
+        labelSelector: addon.kops.k8s.io/name=gcp-pd-csi-driver.addons.k8s.io,app.kubernetes.io/managed-by=kops
+      - kind: ServiceAccount
+        labelSelector: addon.kops.k8s.io/name=gcp-pd-csi-driver.addons.k8s.io,app.kubernetes.io/managed-by=kops
+        namespaces:
+        - gce-pd-csi-driver
+      - group: admissionregistration.k8s.io
+        kind: MutatingWebhookConfiguration
+        labelSelector: addon.kops.k8s.io/name=gcp-pd-csi-driver.addons.k8s.io,app.kubernetes.io/managed-by=kops
+      - group: admissionregistration.k8s.io
+        kind: ValidatingWebhookConfiguration
+        labelSelector: addon.kops.k8s.io/name=gcp-pd-csi-driver.addons.k8s.io,app.kubernetes.io/managed-by=kops
+      - group: apps
+        kind: DaemonSet
+        labelSelector: addon.kops.k8s.io/name=gcp-pd-csi-driver.addons.k8s.io,app.kubernetes.io/managed-by=kops
+        namespaces:
+        - gce-pd-csi-driver
+      - group: apps
+        kind: Deployment
+        labelSelector: addon.kops.k8s.io/name=gcp-pd-csi-driver.addons.k8s.io,app.kubernetes.io/managed-by=kops
+        namespaces:
+        - gce-pd-csi-driver
+      - group: apps
+        kind: StatefulSet
+        labelSelector: addon.kops.k8s.io/name=gcp-pd-csi-driver.addons.k8s.io,app.kubernetes.io/managed-by=kops
+      - group: policy
+        kind: PodDisruptionBudget
+        labelSelector: addon.kops.k8s.io/name=gcp-pd-csi-driver.addons.k8s.io,app.kubernetes.io/managed-by=kops
+      - group: rbac.authorization.k8s.io
+        kind: ClusterRole
+        labelSelector: addon.kops.k8s.io/name=gcp-pd-csi-driver.addons.k8s.io,app.kubernetes.io/managed-by=kops
+      - group: rbac.authorization.k8s.io
+        kind: ClusterRoleBinding
+        labelSelector: addon.kops.k8s.io/name=gcp-pd-csi-driver.addons.k8s.io,app.kubernetes.io/managed-by=kops
+      - group: rbac.authorization.k8s.io
+        kind: Role
+        labelSelector: addon.kops.k8s.io/name=gcp-pd-csi-driver.addons.k8s.io,app.kubernetes.io/managed-by=kops
+        namespaces:
+        - gce-pd-csi-driver
+      - group: rbac.authorization.k8s.io
+        kind: RoleBinding
+        labelSelector: addon.kops.k8s.io/name=gcp-pd-csi-driver.addons.k8s.io,app.kubernetes.io/managed-by=kops
+        namespaces:
+        - gce-pd-csi-driver
     selector:
       k8s-addon: gcp-pd-csi-driver.addons.k8s.io
   - id: k8s-1.23

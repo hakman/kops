@@ -196,6 +196,25 @@ metadata:
     addon.kops.k8s.io/name: gcp-pd-csi-driver.addons.k8s.io
     app.kubernetes.io/managed-by: kops
     k8s-addon: gcp-pd-csi-driver.addons.k8s.io
+  name: csi-gce-pd-node-deploy
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - nodes
+  verbs:
+  - get
+  - list
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    addon.kops.k8s.io/name: gcp-pd-csi-driver.addons.k8s.io
+    app.kubernetes.io/managed-by: kops
+    k8s-addon: gcp-pd-csi-driver.addons.k8s.io
   name: csi-gce-pd-provisioner-role
 rules:
 - apiGroups:
@@ -221,6 +240,14 @@ rules:
   - storage.k8s.io
   resources:
   - storageclasses
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - storage.k8s.io
+  resources:
+  - volumeattributesclasses
   verbs:
   - get
   - list
@@ -310,6 +337,14 @@ rules:
   verbs:
   - update
   - patch
+- apiGroups:
+  - storage.k8s.io
+  resources:
+  - volumeattributesclasses
+  verbs:
+  - get
+  - list
+  - watch
 - apiGroups:
   - ""
   resources:
@@ -432,25 +467,6 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: csi-gce-pd-attacher-role
-subjects:
-- kind: ServiceAccount
-  name: csi-gce-pd-controller-sa
-  namespace: gce-pd-csi-driver
-
----
-
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  labels:
-    addon.kops.k8s.io/name: gcp-pd-csi-driver.addons.k8s.io
-    app.kubernetes.io/managed-by: kops
-    k8s-addon: gcp-pd-csi-driver.addons.k8s.io
-  name: csi-gce-pd-controller-deploy
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: csi-gce-pd-controller-deploy
 subjects:
 - kind: ServiceAccount
   name: csi-gce-pd-controller-sa
