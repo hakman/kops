@@ -27,6 +27,23 @@ chmod +x ./kops
 
 Keep in mind you need to set `KOPS_BASE_URL` every time you use `./kops`
 
+Builds also publish a version-only marker next to the uploaded versions, pointing at the latest
+successful build of the branch (not necessarily one that passed E2E tests):
+
+| branch | marker |
+|--------|--------|
+| master | https://storage.googleapis.com/k8s-staging-kops/kops/releases/latest.txt |
+| kOps X.Y release branch | https://storage.googleapis.com/k8s-staging-kops/kops/releases/latest-X.Y.txt |
+
+Release branch markers are available once the branch publishes them.
+These markers contain only the version, so `KOPS_BASE_URL` is the marker's directory followed by its contents:
+
+```sh
+marker="https://storage.googleapis.com/k8s-staging-kops/kops/releases/latest.txt"
+version="$(curl -fsSL "${marker}")"
+export KOPS_BASE_URL="${marker%/*}/${version}"
+```
+
 ## Testing a pull request
 
 When a PR builds successfully, you can test the PR using the following script:

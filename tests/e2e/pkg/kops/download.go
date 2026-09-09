@@ -19,7 +19,9 @@ package kops
 import (
 	"bytes"
 	"fmt"
+	"net/url"
 	"os"
+	"path"
 	"runtime"
 	"strings"
 
@@ -28,7 +30,7 @@ import (
 
 // DownloadKops will download the kops binary from the version marker URL
 // Returning the URL to use for KOPS_BASE_URL
-// Example markerURL: https://storage.googleapis.com/k8s-staging-kops/kops/releases/markers/master/latest-ci-updown-green.txt
+// Example markerURL: https://storage.googleapis.com/k8s-staging-kops/kops/releases/latest.txt
 func DownloadKops(markerURL, downloadPath, kopsVersion string) (string, error) {
 	var b bytes.Buffer
 	var kopsBaseURL string
@@ -39,7 +41,11 @@ func DownloadKops(markerURL, downloadPath, kopsVersion string) (string, error) {
 		if err := util.HTTPGETWithHeaders(markerURL, nil, &b); err != nil {
 			return "", err
 		}
-		kopsBaseURL = strings.TrimSpace(b.String())
+		baseURL, err := kopsBaseURLFromMarker(markerURL, b.String())
+		if err != nil {
+			return "", err
+		}
+		kopsBaseURL = baseURL
 	}
 
 	kopsFile, err := os.Create(downloadPath)
@@ -58,4 +64,28 @@ func DownloadKops(markerURL, downloadPath, kopsVersion string) (string, error) {
 		return "", err
 	}
 	return kopsBaseURL, nil
+}
+
+// kopsBaseURLFromMarker returns the KOPS_BASE_URL for a version marker.
+// Markers hold only the version, and the artifacts live next to the marker, e.g.
+// https://storage.googleapis.com/k8s-staging-kops/kops/releases/latest.txt -> 1.37.0-beta.2+abc123
+// resolves to https://storage.googleapis.com/k8s-staging-kops/kops/releases/1.37.0-beta.2+abc123
+// Legacy markers hold the full KOPS_BASE_URL and are returned as-is.
+func kopsBaseURLFromMarker(markerURL string, contents string) (string, error) {
+	contents = strings.TrimSpace(contents)
+	if strings.Contains(contents, "://") {
+		return contents, nil
+	}
+	if contents == "" || strings.ContainsAny(contents, "/ \t\n") {
+		return "", fmt.Errorf("version marker %s does not contain a version: %q", markerURL, contents)
+	}
+	u, err := url.Parse(markerURL)
+	if err != nil {
+		return "", fmt.Errorf("parsing version marker URL %q: %w", markerURL, err)
+	}
+	u.Path = path.Join(path.Dir(u.Path), contents)
+	u.RawPath = ""
+	u.RawQuery = ""
+	u.Fragment = ""
+	return u.String(), nil
 }

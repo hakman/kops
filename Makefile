@@ -20,6 +20,10 @@ UPLOAD_DEST?=$(S3_BUCKET)
 GCS_LOCATION?=gs://must-override
 GCS_URL=$(GCS_LOCATION:gs://%=https://storage.googleapis.com/%)
 LATEST_FILE?=latest-ci.txt
+# VERSION_MARKER_FILE is the version-only marker published by gcs-upload-and-tag next to the uploaded versions.
+# It is derived from PULL_BASE_REF (set by cloudbuild): latest.txt for master, latest-X.Y.txt for release-X.Y,
+# and empty (no marker) for anything else, so that tag builds do not overwrite the branch markers.
+VERSION_MARKER_FILE?=$(shell echo "$(PULL_BASE_REF)" | sed -nE 's/^master$$/latest.txt/p; s/^release-([0-9]+\.[0-9]+)$$/latest-\1.txt/p')
 GOPATH_1ST:=$(shell go env GOPATH)
 UNIQUE:=$(shell date +%s)
 BUILD=$(KOPS_ROOT)/.build
@@ -237,11 +241,18 @@ gcs-upload: gcloud version-dist
 	@echo "== Uploading kops =="
 	gcloud storage cp --cache-control="private, max-age=0, no-transform" --no-clobber --recursive ${UPLOAD}/kops/* ${GCS_LOCATION}
 
-# gcs-upload-tag runs gcs-upload to upload, then uploads a version-marker to LATEST_FILE
+# gcs-upload-and-tag runs gcs-upload to upload, then uploads the version markers.
+# VERSION_MARKER_FILE holds only the version, so consumers derive KOPS_BASE_URL from the marker's
+# directory plus its contents; this allows serving the marker from elsewhere, e.g. dl.k8s.io.
+# LATEST_FILE is the legacy marker holding the full KOPS_BASE_URL, kept until all consumers have switched.
 .PHONY: gcs-upload-and-tag
 gcs-upload-and-tag: gcloud gcs-upload
-	echo "${GCS_URL}${VERSION}" > ${UPLOAD}/latest.txt
-	gcloud storage cp --cache-control="private, max-age=0, no-transform" ${UPLOAD}/latest.txt ${GCS_LOCATION}${LATEST_FILE}
+ifneq ($(VERSION_MARKER_FILE),)
+	echo "${VERSION}" > ${UPLOAD}/${VERSION_MARKER_FILE}
+	gcloud storage cp --cache-control="private, max-age=0, no-transform" ${UPLOAD}/${VERSION_MARKER_FILE} ${GCS_LOCATION}${VERSION_MARKER_FILE}
+endif
+	echo "${GCS_URL}${VERSION}" > ${UPLOAD}/latest-url.txt
+	gcloud storage cp --cache-control="private, max-age=0, no-transform" ${UPLOAD}/latest-url.txt ${GCS_LOCATION}${LATEST_FILE}
 
 # gcs-publish-ci is the entry point for CI testing
 .PHONY: gcs-publish-ci
