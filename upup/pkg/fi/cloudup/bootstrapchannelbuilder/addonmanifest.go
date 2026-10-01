@@ -17,10 +17,13 @@ limitations under the License.
 package bootstrapchannelbuilder
 
 import (
+	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 	channelsapi "k8s.io/kops/channels/pkg/api"
 	"k8s.io/kops/pkg/assets"
@@ -104,13 +107,29 @@ func (a *AddonManifest) Normalize(c *fi.CloudupContext) error {
 	manifestBytes = []byte(strings.TrimSpace(string(manifestBytes)))
 
 	if a.buildPrune {
-		if err := buildPruneDirectives(a.addonSpec, manifestBytes); err != nil {
+		if err := buildPruneDirectives(a.addonSpec, manifestBytes, protectedInstanceGroupNames(a.modelContext)); err != nil {
 			return fmt.Errorf("failed to configure pruning for %s: %w", fi.ValueOf(a.addonSpec.Name), err)
 		}
 	}
 
 	rawManifest := string(manifestBytes)
-	manifestHash, err := utils.HashString(rawManifest)
+	hashed := rawManifest
+	protectsObjects := a.addonSpec.Prune != nil && slices.ContainsFunc(a.addonSpec.Prune.Kinds, func(kind channelsapi.PruneKindSpec) bool {
+		return kind.FieldSelector != ""
+	})
+	if protectsObjects {
+		// kops-channels applies and prunes an addon only when its manifest hash changes. Objects
+		// protected from pruning may be missing from the manifest, so the prune spec is hashed with
+		// it: when they are no longer protected, for example after their instance group is deleted,
+		// the hash must change even if the manifest does not. Otherwise, the prune spec only depends
+		// on the manifest, and the hash of the manifest alone is kept.
+		pruneSpec, err := json.Marshal(a.addonSpec.Prune)
+		if err != nil {
+			return fmt.Errorf("error serializing prune spec: %w", err)
+		}
+		hashed += "\n" + string(pruneSpec)
+	}
+	manifestHash, err := utils.HashString(hashed)
 	if err != nil {
 		return fmt.Errorf("error hashing manifest: %v", err)
 	}
@@ -118,6 +137,38 @@ func (a *AddonManifest) Normalize(c *fi.CloudupContext) error {
 	a.Contents = fi.NewBytesResource(manifestBytes)
 
 	return nil
+}
+
+// protectedInstanceGroupNames returns the sorted names of the instance groups whose NodePools and
+// EC2NodeClasses must not be pruned: every Karpenter instance group, and every instance group that
+// is not being updated. Karpenter drains and terminates the nodes of a deleted NodePool, and these
+// objects are only in the manifest for the instance groups being updated, see
+// KarpenterInstanceGroups.
+//
+// The Karpenter instance groups are protected on every update, including full ones, because
+// kops-channels reads an addon manifest by its URL without checking it against the manifest hash in
+// the bootstrap channel, and kOps writes the addon manifests before the bootstrap channel.
+// kops-channels can therefore apply the manifest of one update with the prune spec of another, for
+// example after a full update quickly followed by a partial one, or after two partial updates of
+// different instance groups. Protecting all the Karpenter instance groups makes any such mix safe.
+//
+// Protecting the instance groups that are not being updated also keeps the NodePool of an instance
+// group switched from Karpenter to CloudGroup, until that instance group is updated.
+//
+// The objects of deleted instance groups, and of instance groups moved off Karpenter that are being
+// updated, are still pruned.
+func protectedInstanceGroupNames(modelContext *model.KopsModelContext) []string {
+	updating := sets.New[string]()
+	for _, ig := range modelContext.InstanceGroups {
+		updating.Insert(ig.Name)
+	}
+	protected := sets.New[string]()
+	for _, ig := range modelContext.AllInstanceGroups {
+		if ig.IsKarpenterManaged() || !updating.Has(ig.Name) {
+			protected.Insert(ig.Name)
+		}
+	}
+	return sets.List(protected)
 }
 
 // Find returns a sparsely-populated AddonManifest reflecting the stored ManagedFile: only the
