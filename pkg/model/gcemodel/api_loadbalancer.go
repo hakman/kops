@@ -164,7 +164,7 @@ func (b *APILoadBalancerBuilder) createInternalLB(c *fi.CloudupModelBuilderConte
 	var etcdIGMs []*gcetasks.InstanceGroupManager
 	var kopsControllerIGMs []*gcetasks.InstanceGroupManager
 	requireEtcdLB := false
-	for _, ig := range b.InstanceGroups {
+	for _, ig := range b.AllInstanceGroups {
 		if !ig.RunsAPIServer() && !ig.RunsEtcd() {
 			continue
 		}
@@ -175,7 +175,7 @@ func (b *APILoadBalancerBuilder) createInternalLB(c *fi.CloudupModelBuilderConte
 			return fmt.Errorf("instance group %q must specify exactly one zone", ig.GetName())
 		}
 		zone := ig.Spec.Zones[0]
-		igm := &gcetasks.InstanceGroupManager{Name: s(gce.NameForInstanceGroupManager(b.Cluster.ObjectMeta.Name, ig.ObjectMeta.Name, zone)), Zone: s(zone)}
+		igm := b.linkToInstanceGroupManager(c, ig, zone)
 		if ig.RunsAPIServer() {
 			apiIGMs = append(apiIGMs, igm)
 		}
@@ -230,7 +230,7 @@ func (b *APILoadBalancerBuilder) createInternalLB(c *fi.CloudupModelBuilderConte
 
 	for _, sn := range b.Cluster.Spec.Networking.Subnets {
 		var subnet *gcetasks.Subnet
-		for _, ig := range b.InstanceGroups {
+		for _, ig := range b.AllInstanceGroups {
 			if ig.RunsAPIServer() && slices.Contains(ig.Spec.Subnets, sn.Name) {
 				subnet = b.LinkToSubnet(&sn)
 				break
@@ -330,6 +330,24 @@ func (b *APILoadBalancerBuilder) createInternalLB(c *fi.CloudupModelBuilderConte
 	return nil
 }
 
+// linkToInstanceGroupManager returns a link to the MIG of an instance group in a zone.
+// The backend services include the MIGs of all instance groups, but the MIGs are only built
+// for the instance groups being updated. The MIGs of the other instance groups are added with
+// the Ignore lifecycle, as the other phases are, so that they can be linked to and are not changed.
+func (b *APILoadBalancerBuilder) linkToInstanceGroupManager(c *fi.CloudupModelBuilderContext, ig *kops.InstanceGroup, zone string) *gcetasks.InstanceGroupManager {
+	igm := &gcetasks.InstanceGroupManager{
+		Name: s(gce.NameForInstanceGroupManager(b.Cluster.ObjectMeta.Name, ig.ObjectMeta.Name, zone)),
+		Zone: s(zone),
+	}
+	if !slices.ContainsFunc(b.InstanceGroups, func(updating *kops.InstanceGroup) bool { return updating.Name == ig.Name }) {
+		c.AddTask(igm)
+		// AddTask applies the lifecycle overrides, but this task has only the name of the MIG,
+		// so it must never run.
+		igm.Lifecycle = fi.LifecycleIgnore
+	}
+	return igm
+}
+
 func (b *APILoadBalancerBuilder) createEtcdInternalLB(c *fi.CloudupModelBuilderContext, etcdIGMs []*gcetasks.InstanceGroupManager) error {
 	clusterLabel := gce.LabelForCluster(b.ClusterName())
 	main_hc := &gcetasks.HealthCheck{
@@ -365,7 +383,7 @@ func (b *APILoadBalancerBuilder) createEtcdInternalLB(c *fi.CloudupModelBuilderC
 	}
 	for _, sn := range b.Cluster.Spec.Networking.Subnets {
 		var subnet *gcetasks.Subnet
-		for _, ig := range b.InstanceGroups {
+		for _, ig := range b.AllInstanceGroups {
 			if ig.RunsAPIServer() && slices.Contains(ig.Spec.Subnets, sn.Name) {
 				subnet = b.LinkToSubnet(&sn)
 				break
