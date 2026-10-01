@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 	channelsapi "k8s.io/kops/channels/pkg/api"
 	"k8s.io/kops/pkg/assets"
@@ -104,7 +105,7 @@ func (a *AddonManifest) Normalize(c *fi.CloudupContext) error {
 	manifestBytes = []byte(strings.TrimSpace(string(manifestBytes)))
 
 	if a.buildPrune {
-		if err := buildPruneDirectives(a.addonSpec, manifestBytes); err != nil {
+		if err := buildPruneDirectives(a.addonSpec, manifestBytes, protectedInstanceGroupNames(a.modelContext)); err != nil {
 			return fmt.Errorf("failed to configure pruning for %s: %w", fi.ValueOf(a.addonSpec.Name), err)
 		}
 	}
@@ -118,6 +119,24 @@ func (a *AddonManifest) Normalize(c *fi.CloudupContext) error {
 	a.Contents = fi.NewBytesResource(manifestBytes)
 
 	return nil
+}
+
+// protectedInstanceGroupNames returns the sorted names of the InstanceGroups whose generated
+// objects must not be pruned: every Karpenter InstanceGroup, and every InstanceGroup left out of
+// this update by --instance-group or --instance-group-roles. The only objects left to prune
+// belong to InstanceGroups that were deleted, or that this update moves away from Karpenter.
+func protectedInstanceGroupNames(modelContext *model.KopsModelContext) []string {
+	updated := sets.New[string]()
+	for _, ig := range modelContext.InstanceGroups {
+		updated.Insert(ig.Name)
+	}
+	protected := sets.New[string]()
+	for _, ig := range modelContext.AllInstanceGroups {
+		if ig.IsKarpenterManaged() || !updated.Has(ig.Name) {
+			protected.Insert(ig.Name)
+		}
+	}
+	return sets.List(protected)
 }
 
 // Find returns a sparsely-populated AddonManifest reflecting the stored ManagedFile: only the

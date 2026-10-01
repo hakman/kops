@@ -18,8 +18,10 @@ package bootstrapchannelbuilder
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -30,7 +32,17 @@ import (
 	"k8s.io/kops/pkg/model/components/addonmanifests"
 )
 
-func buildPruneDirectives(spec *channelsapi.AddonSpec, manifestData []byte) error {
+// karpenterInstanceGroupKinds are the kinds kOps generates one object of per Karpenter
+// InstanceGroup, named after the InstanceGroup.
+var karpenterInstanceGroupKinds = []schema.GroupKind{
+	{Group: "karpenter.k8s.aws", Kind: "EC2NodeClass"},
+	{Group: "karpenter.sh", Kind: "NodePool"},
+}
+
+// buildPruneDirectives sets the prune directives of an addon, based on its manifest.
+// protectedInstanceGroups holds the names of the InstanceGroups whose generated objects
+// must not be pruned.
+func buildPruneDirectives(spec *channelsapi.AddonSpec, manifestData []byte, protectedInstanceGroups []string) error {
 	spec.Prune = &channelsapi.PruneSpec{}
 
 	// We add these labels to all objects we manage, so we reuse them for pruning.
@@ -61,10 +73,7 @@ func buildPruneDirectives(spec *channelsapi.AddonSpec, manifestData []byte) erro
 		{Group: "policy", Kind: "PodDisruptionBudget"},
 	}
 	if *spec.Name == "karpenter.sh" {
-		alwaysPruneGroupKinds = append(alwaysPruneGroupKinds,
-			schema.GroupKind{Group: "karpenter.k8s.aws", Kind: "EC2NodeClass"},
-			schema.GroupKind{Group: "karpenter.sh", Kind: "NodePool"},
-		)
+		alwaysPruneGroupKinds = append(alwaysPruneGroupKinds, karpenterInstanceGroupKinds...)
 	}
 	pruneGroupKind := make(map[schema.GroupKind]bool)
 	for _, gk := range alwaysPruneGroupKinds {
@@ -137,6 +146,22 @@ func buildPruneDirectives(spec *channelsapi.AddonSpec, manifestData []byte) erro
 		}
 
 		pruneSpec.LabelSelector = selector.String()
+
+		// The Karpenter objects are only generated for the InstanceGroups being updated, so an
+		// update restricted with --instance-group or --instance-group-roles (such as the first
+		// step of "kops reconcile cluster") leaves out the objects of every other InstanceGroup.
+		// Pruning those would delete their NodePools, and Karpenter would then drain and
+		// terminate all of their nodes. The objects of Karpenter InstanceGroups are protected
+		// on every update, because channels does not check that the manifest it reads matches
+		// the channel: directives written by one update can be applied to the manifest
+		// written by the next one.
+		if slices.Contains(karpenterInstanceGroupKinds, gk) && len(protectedInstanceGroups) != 0 {
+			var nameSelectors []fields.Selector
+			for _, name := range protectedInstanceGroups {
+				nameSelectors = append(nameSelectors, fields.OneTermNotEqualSelector("metadata.name", name))
+			}
+			pruneSpec.FieldSelector = fields.AndSelectors(nameSelectors...).String()
+		}
 
 		spec.Prune.Kinds = append(spec.Prune.Kinds, pruneSpec)
 	}

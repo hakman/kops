@@ -34,15 +34,19 @@ import (
 	"time"
 
 	"golang.org/x/crypto/ssh"
+	channelsapi "k8s.io/kops/channels/pkg/api"
 	"k8s.io/kops/cmd/kops/util"
+	"k8s.io/kops/pkg/apis/kops"
 	"k8s.io/kops/pkg/diff"
 	"k8s.io/kops/pkg/featureflag"
+	"k8s.io/kops/pkg/kubemanifest"
 	"k8s.io/kops/pkg/pki"
 	"k8s.io/kops/pkg/testutils"
 	"k8s.io/kops/pkg/testutils/golden"
 	"k8s.io/kops/pkg/testutils/testcontext"
 	"k8s.io/kops/upup/pkg/fi"
 	"k8s.io/kops/upup/pkg/fi/cloudup"
+	"sigs.k8s.io/yaml"
 )
 
 const (
@@ -484,6 +488,114 @@ func TestExternalDNSIRSA(t *testing.T) {
 func TestKarpenter(t *testing.T) {
 	test := newIntegrationTest("minimal.example.com", "karpenter")
 	test.runTestTerraformAWS(t)
+}
+
+// TestKarpenterRestrictedUpdate runs updates restricted with --instance-group-roles and
+// --instance-group. They only render the Karpenter objects of the InstanceGroups being updated,
+// so the objects of the other InstanceGroups must be excluded from pruning, or Karpenter would
+// terminate all of their nodes. The exclusion matches objects by name, so it relies on each
+// EC2NodeClass and NodePool being named after its InstanceGroup.
+func TestKarpenterRestrictedUpdate(t *testing.T) {
+	tests := []struct {
+		name               string
+		instanceGroups     []string
+		instanceGroupRoles []string
+		// wantObjects are the Karpenter objects rendered in the karpenter.sh manifest.
+		wantObjects []string
+		// wantFieldSelector is expected on the EC2NodeClass and NodePool prune directives.
+		wantFieldSelector string
+	}{
+		{
+			// The first step of "kops reconcile cluster".
+			name:               "control plane only",
+			instanceGroupRoles: []string{string(kops.InstanceGroupRoleAPIServer), string(kops.InstanceGroupRoleControlPlane)},
+			wantFieldSelector:  "metadata.name!=karpenter-nodes-default,metadata.name!=karpenter-nodes-single-machinetype,metadata.name!=nodes",
+		},
+		{
+			name:              "one Karpenter instance group",
+			instanceGroups:    []string{"karpenter-nodes-default"},
+			wantObjects:       []string{"EC2NodeClass/karpenter-nodes-default", "NodePool/karpenter-nodes-default"},
+			wantFieldSelector: "metadata.name!=karpenter-nodes-default,metadata.name!=karpenter-nodes-single-machinetype,metadata.name!=master-us-test-1a,metadata.name!=nodes",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("KOPS_RUN_TOO_NEW_VERSION", "1")
+
+			ctx := testcontext.ForTest(t)
+			h := testutils.NewIntegrationTestHarness(t)
+			defer h.Close()
+
+			h.MockKopsVersion(integrationTestKopsVersion)
+			h.SetupMockAWS()
+
+			test := newIntegrationTest("minimal.example.com", "karpenter")
+			test.srcDir = updateClusterTestBase + test.srcDir
+			var stdout bytes.Buffer
+			factory := test.setupCluster(t, ctx, "in-"+test.version+".yaml", stdout)
+
+			options := &UpdateClusterOptions{}
+			options.InitDefaults()
+			options.Target = "terraform"
+			options.OutDir = path.Join(h.TempDir, "out")
+			options.RunTasksOptions.MaxTaskDuration = 30 * time.Second
+			options.CreateKubecfg = false
+			options.IgnoreKubeletVersionSkew = true
+			options.ClusterName = test.clusterName
+			options.InstanceGroups = tc.instanceGroups
+			options.InstanceGroupRoles = tc.instanceGroupRoles
+			if _, err := RunUpdateCluster(ctx, factory, &stdout, options); err != nil {
+				t.Fatalf("error running update cluster %q: %v", test.clusterName, err)
+			}
+			dataDir := path.Join(options.OutDir, "data")
+
+			manifest, err := os.ReadFile(path.Join(dataDir, "aws_s3_object_"+test.clusterName+"-addons-karpenter.sh-k8s-1.19_content"))
+			if err != nil {
+				t.Fatalf("error reading karpenter.sh manifest: %v", err)
+			}
+			objects, err := kubemanifest.LoadObjectsFrom(manifest)
+			if err != nil {
+				t.Fatalf("error parsing karpenter.sh manifest: %v", err)
+			}
+			var gotObjects []string
+			for _, object := range objects {
+				if object.Kind() == "EC2NodeClass" || object.Kind() == "NodePool" {
+					gotObjects = append(gotObjects, object.Kind()+"/"+object.GetName())
+				}
+			}
+			sort.Strings(gotObjects)
+			if !reflect.DeepEqual(gotObjects, tc.wantObjects) {
+				t.Errorf("rendered Karpenter objects = %v, want %v (pruning excludes them by InstanceGroup name)", gotObjects, tc.wantObjects)
+			}
+
+			data, err := os.ReadFile(path.Join(dataDir, "aws_s3_object_"+test.clusterName+"-addons-bootstrap_content"))
+			if err != nil {
+				t.Fatalf("error reading bootstrap channel: %v", err)
+			}
+			channel := &channelsapi.Addons{}
+			if err := yaml.Unmarshal(data, channel); err != nil {
+				t.Fatalf("error parsing bootstrap channel: %v", err)
+			}
+			karpenterKinds := 0
+			for _, addon := range channel.Spec.Addons {
+				if fi.ValueOf(addon.Name) != "karpenter.sh" || addon.Prune == nil {
+					continue
+				}
+				for _, kind := range addon.Prune.Kinds {
+					if kind.Kind != "EC2NodeClass" && kind.Kind != "NodePool" {
+						continue
+					}
+					karpenterKinds++
+					if kind.FieldSelector != tc.wantFieldSelector {
+						t.Errorf("field selector for %s = %q, want %q", kind.Kind, kind.FieldSelector, tc.wantFieldSelector)
+					}
+				}
+			}
+			if karpenterKinds != 2 {
+				t.Errorf("found %d Karpenter kinds in the karpenter.sh prune directives, want 2", karpenterKinds)
+			}
+		})
+	}
 }
 
 // TestSharedSubnet runs the test on a configuration with a shared subnet (and VPC)
