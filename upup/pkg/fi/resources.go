@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 
 	"k8s.io/kops/util/pkg/vfs"
 )
@@ -240,11 +241,17 @@ func FunctionToResource(fn func() ([]byte, error)) Resource {
 }
 
 type functionResource struct {
-	data []byte
-	fn   func() ([]byte, error)
+	// mutex protects data; a single resource may be shared by several tasks
+	// that run concurrently (e.g. instance user-data).
+	mutex sync.Mutex
+	data  []byte
+	fn    func() ([]byte, error)
 }
 
 func (r *functionResource) Open() (io.Reader, error) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
 	b := r.data
 	if b == nil {
 		data, err := r.fn()
