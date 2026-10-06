@@ -28,7 +28,7 @@ import (
 )
 
 type TerraformWriter struct {
-	// mutex protects the following items (resources & Files)
+	// mutex protects the following items (dataSources, resources, outputs, Providers & Files)
 	mutex sync.Mutex
 	// dataSources is a list of TF data sources that should be created.
 	dataSources []*terraformDataSource
@@ -37,7 +37,9 @@ type TerraformWriter struct {
 	// outputs is a list of our TF output variables
 	outputs map[string]*terraformOutputVariable
 
-	// Providers is a list of TF Providers we need for writing files
+	// Providers is a list of TF Providers we need for writing files.
+	// Tasks run concurrently, so while tasks are rendering it must only be
+	// accessed via EnsureTerraformProvider and HasProvider, which take mutex.
 	Providers map[string]*TerraformProvider
 
 	// AzureStorageAccountID is the Azure Resource Manager ID of the storage
@@ -125,6 +127,15 @@ func (t *TerraformWriter) EnsureTerraformProvider(name string, arguments map[str
 	}
 	t.Providers[key] = tfProvider
 	return tfProvider
+}
+
+// HasProvider reports whether a provider with the given name has been registered.
+// It takes the mutex so it is safe to call concurrently with EnsureTerraformProvider.
+func (t *TerraformWriter) HasProvider(name string) bool {
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+
+	return t.Providers[name] != nil
 }
 
 func (t *TerraformWriter) AddFilePath(resourceType string, resourceName string, key string, data []byte, base64 bool) (*Literal, error) {
@@ -229,8 +240,14 @@ func (t *TerraformWriter) GetDataSourcesByType() (map[string]map[string]interfac
 	return dataSourcesByType, nil
 }
 
+// GetResourcesByType returns the resources rendered so far, grouped by type.
+// Unlike the other getters, tasks may call this while other tasks are still
+// rendering concurrently, so it takes the mutex.
 func (t *TerraformWriter) GetResourcesByType() (map[string]map[string]interface{}, error) {
 	resourcesByType := make(map[string]map[string]interface{})
+
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
 
 	for _, res := range t.resources {
 		resources := resourcesByType[res.ResourceType]

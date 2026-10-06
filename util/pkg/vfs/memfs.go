@@ -237,7 +237,7 @@ type terraformMemFSFile struct {
 }
 
 func (p *MemFSPath) RenderTerraform(w *terraformWriter.TerraformWriter, name string, data io.Reader, acl ACL) error {
-	if w.Providers != nil && w.Providers["azurerm"] != nil {
+	if w.HasProvider("azurerm") {
 		return p.renderTerraformAzure(w, name, data)
 	}
 	return p.renderTerraformS3(w, name, data, acl)

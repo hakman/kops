@@ -17,6 +17,7 @@ limitations under the License.
 package terraformWriter
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -117,4 +118,31 @@ func TestGetOutputs(t *testing.T) {
 			assert.ObjectsAreEqual(tc.expected, actual)
 		})
 	}
+}
+
+// TestHasProviderConcurrent checks that HasProvider can be called while other
+// goroutines register providers, as happens when tasks render concurrently.
+// Run with -race to detect unsynchronised access to Providers.
+func TestHasProviderConcurrent(t *testing.T) {
+	w := &TerraformWriter{}
+	w.InitTerraformWriter()
+
+	assert.False(t, w.HasProvider("aws"))
+
+	var wg sync.WaitGroup
+	for i := 0; i < 16; i++ {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			w.EnsureTerraformProvider("aws", map[string]string{"region": "us-test-1"})
+		}()
+		go func() {
+			defer wg.Done()
+			w.HasProvider("azurerm")
+		}()
+	}
+	wg.Wait()
+
+	assert.True(t, w.HasProvider("aws"))
+	assert.False(t, w.HasProvider("azurerm"))
 }
