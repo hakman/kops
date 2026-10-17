@@ -198,7 +198,7 @@ func NewCmdRollingUpdateCluster(f *util.Factory, out io.Writer) *cobra.Command {
 	cmd.Flags().BoolVar(&options.Force, "force", options.Force, "Force rolling update, even if no changes")
 	cmd.Flags().BoolVar(&options.CloudOnly, "cloudonly", options.CloudOnly, "Perform rolling update without validating cluster status (will cause downtime)")
 
-	cmd.Flags().DurationVar(&options.Admin, "admin", options.Admin, "a cluster admin user credential with the specified lifetime")
+	cmd.Flags().DurationVar(&options.Admin, "admin", options.Admin, "Lifetime of each generated cluster admin credential; renewed automatically during the operation")
 	cmd.Flags().DurationVar(&options.ValidationTimeout, "validation-timeout", options.ValidationTimeout, "Maximum time to wait for a cluster to validate")
 	cmd.Flags().DurationVar(&options.DrainTimeout, "drain-timeout", options.DrainTimeout, "Maximum time to wait for a node to drain")
 	cmd.Flags().Int32Var(&options.ValidateCount, "validate-count", options.ValidateCount, "Number of times that a cluster needs to be validated after single node update")

@@ -59,7 +59,7 @@ kops rolling-update cluster [CLUSTER] [flags]
 ### Options
 
 ```
-      --admin duration                    a cluster admin user credential with the specified lifetime (default 18h0m0s)
+      --admin duration                    Lifetime of each generated cluster admin credential; renewed automatically during the operation (default 18h0m0s)
       --api-server string                 Override the API server URL without changing TLS or authentication settings
       --bastion-interval duration         Time to wait between restarting bastions (default 15s)
       --cloudonly                         Perform rolling update without validating cluster status (will cause downtime)
