@@ -7,6 +7,23 @@ incrementally with a rolling update.
 Rolling updates are performed using
 [the `kops rolling-update cluster` command](../cli/kops_rolling-update_cluster.md).
 
+## API credentials
+
+kOps renews its generated admin certificates automatically during rolling updates,
+reconcile, and validation. Renewal happens on the next API request when less than
+five minutes (or 20% of a shorter certificate lifetime) remain. New requests use
+the renewed certificate, while active requests and watches can finish uninterrupted.
+
+The rolling-update `--admin` flag sets the lifetime of each certificate (18 hours
+by default), not a timeout for the operation. Reconcile uses the default lifetime.
+Drain and validation timeouts are independent of credential renewal. If renewal
+fails, API requests report the renewal error; repeated renewal attempts are
+throttled for up to ten seconds.
+
+With `--use-kubeconfig`, kOps uses the configured user's credentials and leaves
+refresh to that authentication provider. Generated credential renewal does not
+modify the local kubeconfig or renew certificates previously exported to it.
+
 ## Instance selection
 
 Cloud instances are chosen to be updated (replaced) if at least one of the following is true:

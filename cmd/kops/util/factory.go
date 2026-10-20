@@ -328,5 +328,5 @@ func (f *Factory) buildRESTConfig(ctx context.Context, cluster *kops.Cluster, op
 		return nil, err
 	}
 
-	return conf.ToRESTConfig()
+	return conf.ToRESTConfigWithRotation(keyStore, options.Admin)
 }
