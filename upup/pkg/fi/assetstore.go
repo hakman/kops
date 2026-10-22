@@ -117,6 +117,21 @@ func (a *AssetStore) FindMatches(expr *regexp.Regexp) map[string]Resource {
 	return matches
 }
 
+func (a *AssetStore) FindArchiveMatches(archiveExpr *regexp.Regexp) map[string]Resource {
+	matches := make(map[string]Resource)
+
+	klog.Infof("Matching assets extracted from archives %q:", archiveExpr.String())
+	for _, a := range a.assets {
+		if a.source == nil || a.source.Parent == nil || !archiveExpr.MatchString(path.Base(a.source.Parent.URL)) {
+			continue
+		}
+		klog.Infof("    %s", a.AssetPath)
+		matches[a.Key] = &assetResource{Asset: a}
+	}
+
+	return matches
+}
+
 func (a *AssetStore) FindMatch(expr *regexp.Regexp) (name string, res Resource, err error) {
 	matches := a.FindMatches(expr)
 

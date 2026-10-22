@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path"
+	"strings"
 
 	"k8s.io/klog/v2"
 	"k8s.io/kops/pkg/apis/kops/model"
@@ -63,6 +65,10 @@ func FindCNIAssets(ig model.InstanceGroup, assetBuilder *assets.AssetBuilder, ar
 		u, err := url.Parse(cniAssetURL)
 		if err != nil {
 			return nil, fmt.Errorf("unable to parse CNI plugin binaries asset URL %q: %v", cniAssetURL, err)
+		}
+		// nodeup installs into /opt/cni/bin only the files from an archive named like this.
+		if !strings.HasPrefix(path.Base(u.Path), "cni-plugins-") {
+			return nil, fmt.Errorf("%s %q must point to a file named cni-plugins-*", ENV_VAR_CNI_ASSET_URL, cniAssetURL)
 		}
 
 		h, err := hashing.FromString(cniAssetHash)
