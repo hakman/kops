@@ -261,7 +261,7 @@ func main() {
 		}
 	}
 
-	if err := addNodeController(ctx, mgr, &opt); err != nil {
+	if err := addNodeController(ctx, mgr, &opt, clientset); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "NodeController")
 		os.Exit(1)
 	}
@@ -310,7 +310,7 @@ func buildScheme(opt *config.Options) (*runtime.Scheme, error) {
 	return scheme, nil
 }
 
-func addNodeController(ctx context.Context, mgr manager.Manager, opt *config.Options) error {
+func addNodeController(ctx context.Context, mgr manager.Manager, opt *config.Options, clientset simple.Clientset) error {
 	var capiManager *capimanager.Manager
 	if opt.CAPI.IsEnabled() {
 		capiManager = capimanager.NewManager(mgr.GetClient())
@@ -362,10 +362,7 @@ func addNodeController(ctx context.Context, mgr manager.Manager, opt *config.Opt
 		}
 
 	case "metal":
-		identifier, err = nodeidentitymetal.New()
-		if err != nil {
-			return fmt.Errorf("error building metal node identifier: %w", err)
-		}
+		// Metal nodes are identified from their Host object only, below.
 
 	case "linode":
 		identifier, err = nodeidentitylinode.New(opt.CacheNodeidentityInfo)
@@ -381,6 +378,16 @@ func addNodeController(ctx context.Context, mgr manager.Manager, opt *config.Opt
 	}
 
 	identifier = withProviderIDDispatch(opt.Cloud, identifier)
+	// Nodes that joined with a machine key (`kops toolbox enroll`) are identified from
+	// their Host object on any cloud that admits them (server.pki). The Host is bound to
+	// the node name by the machine key, while the provider ID is chosen by the node, so
+	// the Host is checked first.
+	if opt.Server != nil && opt.Server.PKI != nil {
+		identifier = nodeidentitymetal.New(mgr.GetClient(), clientset, opt.ClusterName, identifier)
+	}
+	if identifier == nil {
+		return fmt.Errorf("cloud %q requires server.pki", opt.Cloud)
+	}
 	nodeController, err := controllers.NewNodeReconciler(mgr, identifier)
 	if err != nil {
 		return err
@@ -396,7 +403,7 @@ func addNodeController(ctx context.Context, mgr manager.Manager, opt *config.Opt
 func withProviderIDDispatch(cloud string, identifier nodeidentity.Identifier) nodeidentity.Identifier {
 	switch cloud {
 	case "metal":
-		// Metal identification is not implemented.
+		// Metal nodes are identified from their Host object, not by provider ID.
 		return identifier
 	case "hetzner":
 		cloud = "hcloud"

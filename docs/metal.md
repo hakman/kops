@@ -38,7 +38,9 @@ kubectl apply --server-side -f k8s/crds/kops.k8s.io_hosts.yaml
 ```
 
 Create a ClusterRoleBinding and ClusterRole to allow kops-controller
-to read the Host objects:
+to read the Host objects. kops-controller uses them to verify machines when they
+join, and to label the joined nodes with the instance group and role recorded in
+their Host object:
 
 ```
 kubectl apply --server-side -f - <<EOF
