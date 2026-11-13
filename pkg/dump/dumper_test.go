@@ -138,3 +138,33 @@ func TestDumpAllNodesNilGranter(t *testing.T) {
 		t.Fatalf("DumpAllNodes with nil granter: %v", err)
 	}
 }
+
+func TestLogArtifactName(t *testing.T) {
+	tests := []struct {
+		path string
+		name string
+		want string
+	}{
+		{path: "/var/log/kube-apiserver.log", name: "kube-apiserver", want: "kube-apiserver.log"},
+		{path: "/var/log/kube-apiserver.log.1", name: "kube-apiserver", want: "kube-apiserver.log.1"},
+		{path: "/var/log/kube-apiserver.log.2.gz", name: "kube-apiserver", want: "kube-apiserver.log.2.gz"},
+		{path: "/var/log/kube-apiserver-audit.log", name: "kube-apiserver", want: ""},
+		{path: "/var/log/kubernetes/kube-apiserver.log", name: "kube-apiserver", want: "kube-apiserver.log"},
+		{path: "/var/log/kubernetes/kube-apiserver-20261113-101010.log", name: "kube-apiserver", want: "kube-apiserver-20261113-101010.log"},
+		{path: "/var/log/kubernetes/kube-apiserver-audit.log", name: "kube-apiserver", want: ""},
+		{path: "/var/log/kubernetes/kube-apiserver-audit-20261113-101010.log", name: "kube-apiserver", want: ""},
+		{path: "/var/log/kubernetes/kube-apiserver.log.1", name: "kube-apiserver", want: ""},
+		{path: "/var/log/etcd-events.log", name: "etcd", want: ""},
+		{path: "/var/log/kubernetes/kube-proxy-20261113-101010.log", name: "kube-proxy", want: "kube-proxy-20261113-101010.log"},
+		{path: "/var/log/aws-routed-eni/ipamd.log", name: "aws-routed-eni/ipamd", want: "aws-routed-eni_ipamd.log"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.path+"/"+tc.name, func(t *testing.T) {
+			got, ok := logArtifactName(tc.path, tc.name)
+			if ok != (tc.want != "") || got != tc.want {
+				t.Errorf("logArtifactName(%q, %q) = %q, %v, want %q", tc.path, tc.name, got, ok, tc.want)
+			}
+		})
+	}
+}

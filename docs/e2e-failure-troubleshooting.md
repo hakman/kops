@@ -158,6 +158,8 @@ Each build directory contains the following hierarchy:
         └── dns-controller.log # dns-controller pod logs
 ```
 
+Rotated copies of the logs from `/var/log/` sit next to the current file. logrotate names them `<name>.log.N`. With Kubernetes 1.36 or newer, kube-apiserver, kube-controller-manager, kube-scheduler and kube-proxy write their logs to `/var/log/kubernetes/` on the node and rotate them as `<name>-YYYYMMDD-HHMMSS.log`. The dump saves these under the same names as logs directly in `/var/log/`.
+
 ### Node Dump Priority
 
 Nodes are dumped in this priority order (from `pkg/dump/dumper.go`):

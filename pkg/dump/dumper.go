@@ -24,6 +24,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -465,12 +466,12 @@ func (n *logDumperNode) dump(ctx context.Context) []error {
 		errors = append(errors, fmt.Errorf("error reading /var/log: %v", err))
 	}
 	for _, name := range n.dumper.files {
-		prefix := "/var/log/" + name + ".log"
 		for _, f := range fileList {
-			if !strings.HasPrefix(f, prefix) {
+			artifact, ok := logArtifactName(f, name)
+			if !ok {
 				continue
 			}
-			if err := n.shellToFile(ctx, "sudo cat '"+strings.ReplaceAll(f, "'", "'\\''")+"'", filepath.Join(n.dir, strings.ReplaceAll(strings.TrimPrefix(f, "/var/log/"), "/", "_"))); err != nil {
+			if err := n.shellToFile(ctx, "sudo cat '"+strings.ReplaceAll(f, "'", "'\\''")+"'", filepath.Join(n.dir, artifact)); err != nil {
 				errors = append(errors, err)
 			}
 		}
@@ -742,4 +743,21 @@ func (f *sshClientFactoryImplementation) Dial(ctx context.Context, host string, 
 			forwardTo: host,
 		}, nil
 	}
+}
+
+// rotatedLogSuffix matches the suffix kube-log-runner (/go-runner in the Kubernetes server images)
+// gives a rotated log file, "-YYYYMMDD-HHMMSS.log".
+var rotatedLogSuffix = regexp.MustCompile(`^-[0-9]{8}-[0-9]{6}\.log$`)
+
+// logArtifactName reports whether path is /var/log/<name>.log, one of its logrotate backups, or
+// /var/log/kubernetes/<name>.log or one of its kube-log-runner backups, and returns the file name to
+// save it as. Logs in /var/log/kubernetes keep the names they would have directly in /var/log.
+func logArtifactName(path, name string) (string, bool) {
+	if rest, ok := strings.CutPrefix(path, "/var/log/kubernetes/"+name); ok && (rest == ".log" || rotatedLogSuffix.MatchString(rest)) {
+		return name + rest, true
+	}
+	if strings.HasPrefix(path, "/var/log/"+name+".log") {
+		return strings.ReplaceAll(strings.TrimPrefix(path, "/var/log/"), "/", "_"), true
+	}
+	return "", false
 }
