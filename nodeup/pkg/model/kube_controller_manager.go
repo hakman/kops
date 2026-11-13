@@ -95,15 +95,7 @@ func (b *KubeControllerManagerBuilder) Build(c *fi.NodeupModelBuilderContext) er
 		})
 	}
 
-	{
-		c.AddTask(&nodetasks.File{
-			Path:        "/var/log/kube-controller-manager.log",
-			Contents:    fi.NewStringResource(""),
-			Type:        nodetasks.FileType_File,
-			Mode:        s("0400"),
-			IfNotExists: true,
-		})
-	}
+	b.addGoRunnerLogFileTasks(c, "kube-controller-manager")
 
 	// Add kubeconfig
 	{
@@ -252,18 +244,11 @@ func (b *KubeControllerManagerBuilder) buildPod(kcm *kops.KubeControllerManagerC
 		},
 	}
 
-	// Log both to docker and to the logfile
-	kubemanifest.AddHostPathMapping(pod, container, "logfile", "/var/log/kube-controller-manager.log", kubemanifest.WithReadWrite())
 	// We use lighter containers that don't include shells
 	// But they have richer logging support via klog
 	{
 		container.Command = []string{"/go-runner"}
-		container.Args = []string{
-			"--log-file=/var/log/kube-controller-manager.log",
-			"--also-stdout",
-			"/usr/local/bin/kube-controller-manager",
-		}
-		container.Args = append(container.Args, sortedStrings(flags)...)
+		container.Args = append(b.goRunnerArgs(pod, container, "kube-controller-manager"), sortedStrings(flags)...)
 	}
 	for _, path := range b.SSLHostPaths() {
 		name := strings.ReplaceAll(path, "/", "")

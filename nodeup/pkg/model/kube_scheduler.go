@@ -131,15 +131,7 @@ func (b *KubeSchedulerBuilder) Build(c *fi.NodeupModelBuilderContext) error {
 		})
 	}
 
-	{
-		c.AddTask(&nodetasks.File{
-			Path:        "/var/log/kube-scheduler.log",
-			Contents:    fi.NewStringResource(""),
-			Type:        nodetasks.FileType_File,
-			Mode:        s("0400"),
-			IfNotExists: true,
-		})
-	}
+	b.addGoRunnerLogFileTasks(c, "kube-scheduler")
 
 	return nil
 }
@@ -267,18 +259,11 @@ func (b *KubeSchedulerBuilder) buildPod(kubeScheduler *kops.KubeSchedulerConfig)
 	kubemanifest.AddHostPathMapping(pod, container, "varlibkubescheduler", "/var/lib/kube-scheduler")
 	kubemanifest.AddHostPathMapping(pod, container, "srvscheduler", pathSrvScheduler)
 
-	// Log both to docker and to the logfile
-	kubemanifest.AddHostPathMapping(pod, container, "logfile", "/var/log/kube-scheduler.log", kubemanifest.WithReadWrite())
 	// We use lighter containers that don't include shells
 	// But they have richer logging support via klog
 	{
 		container.Command = []string{"/go-runner"}
-		container.Args = []string{
-			"--log-file=/var/log/kube-scheduler.log",
-			"--also-stdout",
-			"/usr/local/bin/kube-scheduler",
-		}
-		container.Args = append(container.Args, sortedStrings(flags)...)
+		container.Args = append(b.goRunnerArgs(pod, container, "kube-scheduler"), sortedStrings(flags)...)
 	}
 
 	if kubeScheduler.MaxPersistentVolumes != nil {

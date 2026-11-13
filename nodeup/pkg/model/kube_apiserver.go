@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"net"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -260,13 +261,7 @@ func (b *KubeAPIServerBuilder) Build(c *fi.NodeupModelBuilderContext) error {
 		}
 	}
 
-	c.AddTask(&nodetasks.File{
-		Path:        "/var/log/kube-apiserver.log",
-		Contents:    fi.NewStringResource(""),
-		Type:        nodetasks.FileType_File,
-		Mode:        s("0400"),
-		IfNotExists: true,
-	})
+	b.addGoRunnerLogFileTasks(c, "kube-apiserver")
 
 	return nil
 }
@@ -761,18 +756,11 @@ func (b *KubeAPIServerBuilder) buildPod(ctx context.Context, kubeAPIServer *kops
 		})
 	}
 
-	// Log both to docker and to the logfile
-	kubemanifest.AddHostPathMapping(pod, container, "logfile", "/var/log/kube-apiserver.log", kubemanifest.WithReadWrite())
 	// We use lighter containers that don't include shells
 	// But they have richer logging support via klog
 	{
 		container.Command = []string{"/go-runner"}
-		container.Args = []string{
-			"--log-file=/var/log/kube-apiserver.log",
-			"--also-stdout",
-			"/usr/local/bin/kube-apiserver",
-		}
-		container.Args = append(container.Args, sortedStrings(flags)...)
+		container.Args = append(b.goRunnerArgs(pod, container, "kube-apiserver"), sortedStrings(flags)...)
 		for _, issuer := range kubeAPIServer.AdditionalServiceAccountIssuers {
 			container.Args = append(container.Args, "--service-account-issuer="+issuer)
 		}
@@ -801,7 +789,11 @@ func (b *KubeAPIServerBuilder) buildPod(ctx context.Context, kubeAPIServer *kops
 		// Renaming is not possible when the file is mounted as the host path, and will return a
 		// 'Device or resource busy' error
 		auditLogPathDir := filepath.Dir(auditLogPath)
-		kubemanifest.AddHostPathMapping(pod, container, "auditlogpathdir", auditLogPathDir, kubemanifest.WithReadWrite())
+		// The directory can already be mounted read-write for the kube-apiserver log, and the kubelet
+		// rejects a pod that mounts the same path twice.
+		if !slices.ContainsFunc(container.VolumeMounts, func(m v1.VolumeMount) bool { return m.MountPath == auditLogPathDir }) {
+			kubemanifest.AddHostPathMapping(pod, container, "auditlogpathdir", auditLogPathDir, kubemanifest.WithReadWrite())
+		}
 	}
 	if kubeAPIServer.AuditPolicyFile != "" {
 		// The audit config dir will be used for both the audit policy and the audit webhook config

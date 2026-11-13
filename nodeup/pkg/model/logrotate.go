@@ -36,6 +36,13 @@ var _ fi.NodeupModelBuilder = &LogrotateBuilder{}
 
 // Build is responsible for configuring logrotate
 func (b *LogrotateBuilder) Build(c *fi.NodeupModelBuilderContext) error {
+	// When /go-runner rotates the Kubernetes component logs, logrotate is only needed for the etcd
+	// logs, because the etcd-manager image ships a /go-runner that does not rotate.
+	if b.useGoRunnerLogRotation() && len(b.NodeupConfig.EtcdManifests) == 0 {
+		klog.Infof("No logs to rotate with logrotate; won't install logrotate")
+		return nil
+	}
+
 	switch b.Distribution {
 	case distributions.DistributionContainerOS:
 		klog.Infof("Detected ContainerOS; won't install logrotate")
@@ -48,10 +55,12 @@ func (b *LogrotateBuilder) Build(c *fi.NodeupModelBuilderContext) error {
 
 	b.addLogRotate(c, "docker", "/var/log/docker.log", logRotateOptions{})
 	b.addLogRotate(c, "kube-addons", "/var/log/kube-addons.log", logRotateOptions{})
-	b.addLogRotate(c, "kube-apiserver", "/var/log/kube-apiserver.log", logRotateOptions{})
-	b.addLogRotate(c, "kube-controller-manager", "/var/log/kube-controller-manager.log", logRotateOptions{})
-	b.addLogRotate(c, "kube-proxy", "/var/log/kube-proxy.log", logRotateOptions{})
-	b.addLogRotate(c, "kube-scheduler", "/var/log/kube-scheduler.log", logRotateOptions{})
+	if !b.useGoRunnerLogRotation() {
+		b.addLogRotate(c, "kube-apiserver", "/var/log/kube-apiserver.log", logRotateOptions{})
+		b.addLogRotate(c, "kube-controller-manager", "/var/log/kube-controller-manager.log", logRotateOptions{})
+		b.addLogRotate(c, "kube-proxy", "/var/log/kube-proxy.log", logRotateOptions{})
+		b.addLogRotate(c, "kube-scheduler", "/var/log/kube-scheduler.log", logRotateOptions{})
+	}
 	b.addLogRotate(c, "kubelet", "/var/log/kubelet.log", logRotateOptions{})
 	b.addLogRotate(c, "etcd", "/var/log/etcd.log", logRotateOptions{})
 	b.addLogRotate(c, "etcd-events", "/var/log/etcd-events.log", logRotateOptions{})

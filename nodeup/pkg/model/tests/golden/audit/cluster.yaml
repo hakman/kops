@@ -61,14 +61,14 @@ spec:
     auditLogMaxAge: 10
     auditLogMaxBackups: 1
     auditLogMaxSize: 100
-    auditLogPath: /var/log/kube-apiserver-audit.log
+    auditLogPath: /var/log/kubernetes/kube-apiserver-audit.log
     auditPolicyFile: /etc/kubernetes/audit/policy-config.yaml
     auditWebhookBatchMaxWait: 5s
     auditWebhookConfigFile: /etc/kubernetes/audit/webhook-config.yaml
     authenticationConfigFile: /etc/kubernetes/authentication-config.yaml
   kubelet:
     anonymousAuth: false
-  kubernetesVersion: v1.35.0
+  kubernetesVersion: v1.36.0
   masterPublicName: api.minimal.example.com
   networkCIDR: 172.20.0.0/16
   networking:

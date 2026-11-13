@@ -93,15 +93,7 @@ func (b *KubeProxyBuilder) Build(c *fi.NodeupModelBuilderContext) error {
 		})
 	}
 
-	{
-		c.AddTask(&nodetasks.File{
-			Path:        "/var/log/kube-proxy.log",
-			Contents:    fi.NewStringResource(""),
-			Type:        nodetasks.FileType_File,
-			Mode:        s("0400"),
-			IfNotExists: true,
-		})
-	}
+	b.addGoRunnerLogFileTasks(c, "kube-proxy")
 
 	return nil
 }
@@ -194,18 +186,11 @@ func (b *KubeProxyBuilder) buildPod() (*v1.Pod, error) {
 		},
 	}
 
-	// Log both to docker and to the logfile
-	kubemanifest.AddHostPathMapping(pod, container, "logfile", "/var/log/kube-proxy.log", kubemanifest.WithReadWrite())
 	// We use lighter containers that don't include shells
 	// But they have richer logging support via klog
 	{
 		container.Command = []string{"/go-runner"}
-		container.Args = []string{
-			"--log-file=/var/log/kube-proxy.log",
-			"--also-stdout",
-			"/usr/local/bin/kube-proxy",
-		}
-		container.Args = append(container.Args, sortedStrings(flags)...)
+		container.Args = append(b.goRunnerArgs(pod, container, "kube-proxy"), sortedStrings(flags)...)
 	}
 	{
 		kubemanifest.AddHostPathMapping(pod, container, "kubeconfig", "/var/lib/kube-proxy")

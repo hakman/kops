@@ -19,11 +19,14 @@ package model
 import (
 	"testing"
 
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/kops/pkg/apis/kops"
 	"k8s.io/kops/pkg/flagbuilder"
 	"k8s.io/kops/upup/pkg/fi"
+	"k8s.io/kops/upup/pkg/fi/nodeup/nodetasks"
 	"k8s.io/kops/util/pkg/architectures"
 	"k8s.io/utils/pointer"
+	"sigs.k8s.io/yaml"
 )
 
 func Test_KubeAPIServer_BuildFlags(t *testing.T) {
@@ -164,7 +167,12 @@ func TestKubeAPIServerBuilder(t *testing.T) {
 func TestAuditConfigAPIServerBuilder(t *testing.T) {
 	RunGoldenTest(t, "tests/golden/audit", "kube-apiserver", func(nodeupModelContext *NodeupModelContext, target *fi.NodeupModelBuilderContext) error {
 		builder := KubeAPIServerBuilder{NodeupModelContext: nodeupModelContext}
-		return builder.Build(target)
+		if err := builder.Build(target); err != nil {
+			return err
+		}
+		// The audit log is in /var/log/kubernetes, which go-runner log rotation also mounts.
+		assertUniqueMountPaths(t, target, "/etc/kubernetes/manifests/kube-apiserver.manifest")
+		return nil
 	})
 }
 
@@ -216,4 +224,33 @@ func TestKubeAPIServerEnvBuilder(t *testing.T) {
 		builder := KubeAPIServerBuilder{NodeupModelContext: nodeupModelContext}
 		return builder.Build(target)
 	})
+}
+
+// assertUniqueMountPaths fails the test if a container in the static pod manifest at path mounts
+// the same path twice, which makes the kubelet reject the pod.
+func assertUniqueMountPaths(t *testing.T, target *fi.NodeupModelBuilderContext, path string) {
+	t.Helper()
+
+	task, ok := target.Tasks["File/"+path].(*nodetasks.File)
+	if !ok {
+		t.Fatalf("no file task for %s", path)
+	}
+	manifest, err := fi.ResourceAsBytes(task.Contents)
+	if err != nil {
+		t.Fatalf("reading %s: %v", path, err)
+	}
+	pod := &v1.Pod{}
+	if err := yaml.Unmarshal(manifest, pod); err != nil {
+		t.Fatalf("parsing %s: %v", path, err)
+	}
+
+	for _, container := range pod.Spec.Containers {
+		seen := map[string]bool{}
+		for _, mount := range container.VolumeMounts {
+			if seen[mount.MountPath] {
+				t.Errorf("%s: container %q mounts %s more than once", path, container.Name, mount.MountPath)
+			}
+			seen[mount.MountPath] = true
+		}
+	}
 }
