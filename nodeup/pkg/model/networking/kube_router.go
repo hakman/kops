@@ -61,8 +61,7 @@ func (b *KuberouterBuilder) Build(c *fi.NodeupModelBuilderContext) error {
 	// Create a symlink so the kube-router DaemonSet can mount /usr/share/iproute2/rt_tables.
 	// Ref: https://github.com/kubernetes/kops/issues/17914
 	switch b.Distribution {
-	case distributions.DistributionDebian11,
-		distributions.DistributionDebian12,
+	case distributions.DistributionDebian12,
 		distributions.DistributionUbuntu2204,
 		distributions.DistributionUbuntu2404:
 		c.AddTask(&nodetasks.File{

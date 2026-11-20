@@ -52,26 +52,16 @@ func FindDistribution(rootfs string) (Distribution, error) {
 		return DistributionAmazonLinux2023, nil
 	case "amzn-2027":
 		return DistributionAmazonLinux2027, nil
-	case "debian-11":
-		return DistributionDebian11, nil
 	case "debian-12":
 		return DistributionDebian12, nil
 	case "debian-13":
 		return DistributionDebian13, nil
-	case "fedora-41":
-		return DistributionFedora41, nil
-	case "fedora-42":
-		return DistributionFedora42, nil
-	case "fedora-43":
-		return DistributionFedora43, nil
 	case "fedora-44":
 		return DistributionFedora44, nil
 	case "ubuntu-22.04":
 		return DistributionUbuntu2204, nil
 	case "ubuntu-24.04":
 		return DistributionUbuntu2404, nil
-	case "ubuntu-25.10":
-		return DistributionUbuntu2510, nil
 	case "ubuntu-26.04":
 		return DistributionUbuntu2604, nil
 	case "ubuntu-26.10":
@@ -91,17 +81,11 @@ func FindDistribution(rootfs string) (Distribution, error) {
 	if strings.HasPrefix(distro, "centos-10.") {
 		return DistributionCentOS10, nil
 	}
-	if strings.HasPrefix(distro, "rhel-8.") {
-		return DistributionRhel8, nil
-	}
 	if strings.HasPrefix(distro, "rhel-9.") {
 		return DistributionRhel9, nil
 	}
 	if strings.HasPrefix(distro, "rhel-10.") {
 		return DistributionRhel10, nil
-	}
-	if strings.HasPrefix(distro, "rocky-8.") {
-		return DistributionRocky8, nil
 	}
 	if strings.HasPrefix(distro, "rocky-9.") {
 		return DistributionRocky9, nil

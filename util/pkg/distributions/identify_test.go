@@ -70,11 +70,6 @@ func TestFindDistribution(t *testing.T) {
 			expected: Distribution{},
 		},
 		{
-			rootfs:   "debian11",
-			err:      nil,
-			expected: DistributionDebian11,
-		},
-		{
 			rootfs:   "debian12",
 			err:      nil,
 			expected: DistributionDebian12,
@@ -94,19 +89,9 @@ func TestFindDistribution(t *testing.T) {
 			expected: Distribution{},
 		},
 		{
-			rootfs:   "rhel8",
-			err:      nil,
-			expected: DistributionRhel8,
-		},
-		{
 			rootfs:   "rhel9",
 			err:      nil,
 			expected: DistributionRhel9,
-		},
-		{
-			rootfs:   "rocky8",
-			err:      nil,
-			expected: DistributionRocky8,
 		},
 		{
 			rootfs:   "rocky9",
@@ -127,11 +112,6 @@ func TestFindDistribution(t *testing.T) {
 			rootfs:   "ubuntu2404",
 			err:      nil,
 			expected: DistributionUbuntu2404,
-		},
-		{
-			rootfs:   "ubuntu2510",
-			err:      nil,
-			expected: DistributionUbuntu2510,
 		},
 		{
 			rootfs:   "ubuntu2604",

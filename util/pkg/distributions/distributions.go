@@ -41,27 +41,20 @@ type Distribution struct {
 
 var (
 	// Debian-family distros
-	DistributionDebian11   = Distribution{packageFormat: "deb", project: "debian", id: "bullseye", version: 11}
 	DistributionDebian12   = Distribution{packageFormat: "deb", project: "debian", id: "bookworm", version: 12}
 	DistributionDebian13   = Distribution{packageFormat: "deb", project: "debian", id: "trixie", version: 13}
 	DistributionUbuntu2204 = Distribution{packageFormat: "deb", project: "ubuntu", id: "jammy", version: 22.04}
 	DistributionUbuntu2404 = Distribution{packageFormat: "deb", project: "ubuntu", id: "noble", version: 24.04}
-	DistributionUbuntu2510 = Distribution{packageFormat: "deb", project: "ubuntu", id: "questing", version: 25.10}
 	DistributionUbuntu2604 = Distribution{packageFormat: "deb", project: "ubuntu", id: "resolute", version: 26.04}
 	DistributionUbuntu2610 = Distribution{packageFormat: "deb", project: "ubuntu", id: "stonking", version: 26.10}
 
 	// Redhat-family distros
-	DistributionRhel8           = Distribution{packageFormat: "rpm", project: "rhel", id: "rhel8", version: 8}
 	DistributionRhel9           = Distribution{packageFormat: "rpm", project: "rhel", id: "rhel9", version: 9}
 	DistributionRhel10          = Distribution{packageFormat: "rpm", project: "rhel", id: "rhel10", version: 10}
 	DistributionCentOS9         = Distribution{packageFormat: "rpm", project: "centos", id: "centos", version: 9}
 	DistributionCentOS10        = Distribution{packageFormat: "rpm", project: "centos", id: "centos", version: 10}
-	DistributionRocky8          = Distribution{packageFormat: "rpm", project: "rocky", id: "rocky8", version: 8}
 	DistributionRocky9          = Distribution{packageFormat: "rpm", project: "rocky", id: "rocky9", version: 9}
 	DistributionRocky10         = Distribution{packageFormat: "rpm", project: "rocky", id: "rocky10", version: 10}
-	DistributionFedora41        = Distribution{packageFormat: "rpm", project: "fedora", id: "fedora41", version: 41}
-	DistributionFedora42        = Distribution{packageFormat: "rpm", project: "fedora", id: "fedora42", version: 42}
-	DistributionFedora43        = Distribution{packageFormat: "rpm", project: "fedora", id: "fedora43", version: 43}
 	DistributionFedora44        = Distribution{packageFormat: "rpm", project: "fedora", id: "fedora44", version: 44}
 	DistributionAmazonLinux2023 = Distribution{packageFormat: "rpm", project: "amazonlinux", id: "amzn", version: 2023}
 	DistributionAmazonLinux2027 = Distribution{packageFormat: "rpm", project: "amazonlinux", id: "amzn", version: 2027}
@@ -176,9 +169,9 @@ func (d *Distribution) ForceNftables() bool {
 	switch *d {
 	case DistributionAmazonLinux2023, DistributionAmazonLinux2027:
 		return false
-	case DistributionRhel8, DistributionRhel9:
+	case DistributionRhel9:
 		return false
-	case DistributionRocky8, DistributionRocky9:
+	case DistributionRocky9:
 		return false
 	case DistributionCentOS9:
 		return false

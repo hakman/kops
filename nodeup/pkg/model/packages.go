@@ -55,8 +55,7 @@ func (b *PackagesBuilder) Build(c *fi.NodeupModelBuilderContext) error {
 		case distributions.DistributionAmazonLinux2023, distributions.DistributionAmazonLinux2027:
 			// install iptables-nft in Amazon Linux (NOT the iptables-legacy!)
 			c.AddTask(&nodetasks.Package{Name: "iptables-nft"})
-		case distributions.DistributionRhel8, distributions.DistributionRhel9,
-			distributions.DistributionRocky8:
+		case distributions.DistributionRhel9:
 			c.AddTask(&nodetasks.Package{Name: "iptables"})
 		default:
 			c.AddTask(&nodetasks.Package{Name: "nftables"})

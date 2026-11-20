@@ -1914,7 +1914,7 @@ func ResolveImageOwnerAlias(owner string) string {
 	switch owner {
 	case "amazon", "amazon.com":
 		return WellKnownAccountAmazonLinux2023
-	case "debian", "debian11":
+	case "debian":
 		return WellKnownAccountDebian
 	case "flatcar":
 		return WellKnownAccountFlatcar

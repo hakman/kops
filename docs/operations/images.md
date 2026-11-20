@@ -44,16 +44,16 @@ The following table provides the support status for various distros with regards
 | Debian 8                                |            - |    1.5 |       1.17 |    1.18 |
 | Debian 9                                |          1.8 |   1.10 |       1.21 |    1.23 |
 | Debian 10                               |         1.13 |   1.17 |       1.35 |    1.36 |
-| [Debian 11](#debian-11-bullseye)        |       1.21.1 |      - |       1.37 |    1.38 |
+| Debian 11                               |       1.21.1 |      - |       1.37 |    1.38 |
 | [Debian 12](#debian-12-bookworm)        |       1.26.3 |      - |          - |       - |
 | [Debian 13](#debian-13-trixie)          |         1.34 |   1.37 |          - |       - |
 | [Flatcar](#flatcar)                     |       1.15.1 |   1.17 |          - |       - |
 | Kope.io                                 |            - |      - |       1.18 |    1.23 |
 | RHEL 7                                  |            - |    1.5 |       1.21 |    1.23 |
-| [RHEL 8](#rhel-8)                       |         1.15 |   1.18 |       1.37 |    1.38 |
+| RHEL 8                                  |         1.15 |   1.18 |       1.37 |    1.38 |
 | [RHEL 9](#rhel-9)                       |         1.27 |      - |          - |       - |
 | [RHEL 10](#rhel-10)                     |         1.35 |      - |          - |       - |
-| [Rocky 8](#rocky-8)                     |       1.23.2 |   1.24 |       1.37 |    1.38 |
+| Rocky 8                                 |       1.23.2 |   1.24 |       1.37 |    1.38 |
 | [Rocky 9](#rocky-9)                     |         1.30 |      - |          - |       - |
 | [Rocky 10](#rocky-10)                   |         1.35 |      - |          - |       - |
 | Ubuntu 16.04                            |          1.5 |   1.10 |       1.17 |    1.20 |
@@ -91,28 +91,6 @@ aws ec2 describe-images --region us-east-1 --output table \
   --filters "Name=owner-alias,Values=amazon" \
   --query "sort_by(Images, &CreationDate)[*].[CreationDate,Name,ImageId]" \
   --filters "Name=name,Values=al2027-preview-ami-2*-kernel-7.1-*"
-```
-
-### Debian 11 (Bullseye)
-
-Debian 11 is based on Kernel version **5.10** which has no known major Kernel bugs and fully supports all Cilium features.
-
-Available images can be listed using:
-
-```bash
-# Amazon Web Services (AWS)
-aws ec2 describe-images --region us-east-1 --output table \
-  --owners 136693071363 \
-  --query "sort_by(Images, &CreationDate)[*].[CreationDate,Name,ImageId]" \
-  --filters "Name=name,Values=debian-11-*-*"
-
-# Google Cloud Platform (GCP)
-gcloud compute images list --filter debian-11-bullseye- \
-  --project debian-cloud
-
-# Microsoft Azure
-az vm image list --all --output table \
-  --publisher Debian --offer debian-11 --sku 11-gen2
 ```
 
 ### Debian 12 (Bookworm)
@@ -172,25 +150,6 @@ aws ec2 describe-images --region us-east-1 --output table \
   --filters "Name=name,Values=Flatcar-stable-*-hvm"
 ```
 
-### RHEL 8
-
-RHEL 8 is based on Kernel version **4.18** which fixes some of the bugs present in RHEL/CentOS 7 and effects are less visible.
-
-One notable change is the addition of `iptables` NFT, which is the only iptables backend available. This may not be supported by some CNI plugins and should be used with care.
-
-Available images can be listed using:
-
-```bash
-aws ec2 describe-images --region us-east-1 --output table \
-  --owners 309956199498 \
-  --query "sort_by(Images, &CreationDate)[*].[CreationDate,Name,ImageId]" \
-  --filters "Name=name,Values=RHEL-8.*"
-
-# Google Cloud Platform (GCP)
-gcloud compute images list --filter rhel-8- \
-  --project rhel-cloud
-```
-
 ### RHEL 9
 
 RHEL 9 is based on Kernel version **5.15** which fixes all the known major Kernel bugs.
@@ -223,23 +182,6 @@ aws ec2 describe-images --region us-east-1 --output table \
 # Google Cloud Platform (GCP)
 gcloud compute images list --filter rhel-10- \
   --project rhel-cloud
-```
-
-### Rocky 8
-
-Rocky Linux is a community enterprise Operating System designed to be 100% bug-for-bug compatible with [RHEL 8](#rhel-8).
-
-Available images can be listed using:
-
-```bash
-aws ec2 describe-images --region us-east-1 --output table \
-  --owners 792107900819 \
-  --query "sort_by(Images, &CreationDate)[*].[CreationDate,Name,ImageId]" \
-  --filters "Name=name,Values=Rocky-8-ec2-8.*.*"
-
-# Google Cloud Platform (GCP)
-gcloud compute images list --filter rocky-linux-8-optimized-gcp-v \
-  --project rocky-linux-cloud
 ```
 
 ### Rocky 9

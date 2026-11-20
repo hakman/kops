@@ -41,7 +41,6 @@ func (b *AmazonVPCRoutedENIBuilder) Build(c *fi.NodeupModelBuilderContext) error
 		return err
 	}
 	disableCloudInitNetworkHotplug(c, b.Distribution)
-	narrowCloudIfupdownHelperRule(c, b.Distribution)
 	disableNMCloudSetup(c, b.Distribution)
 
 	return nil
