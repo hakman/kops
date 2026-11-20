@@ -44,16 +44,16 @@ The following table provides the support status for various distros with regards
 | Debian 8                                |            - |    1.5 |       1.17 |    1.18 |
 | Debian 9                                |          1.8 |   1.10 |       1.21 |    1.23 |
 | Debian 10                               |         1.13 |   1.17 |       1.35 |    1.36 |
-| [Debian 11](#debian-11-bullseye)        |       1.21.1 |      - |          - |       - |
+| [Debian 11](#debian-11-bullseye)        |       1.21.1 |      - |       1.37 |    1.38 |
 | [Debian 12](#debian-12-bookworm)        |       1.26.3 |      - |          - |       - |
 | [Debian 13](#debian-13-trixie)          |         1.34 |   1.37 |          - |       - |
 | [Flatcar](#flatcar)                     |       1.15.1 |   1.17 |          - |       - |
 | Kope.io                                 |            - |      - |       1.18 |    1.23 |
 | RHEL 7                                  |            - |    1.5 |       1.21 |    1.23 |
-| [RHEL 8](#rhel-8)                       |         1.15 |   1.18 |          - |       - |
+| [RHEL 8](#rhel-8)                       |         1.15 |   1.18 |       1.37 |    1.38 |
 | [RHEL 9](#rhel-9)                       |         1.27 |      - |          - |       - |
 | [RHEL 10](#rhel-10)                     |         1.35 |      - |          - |       - |
-| [Rocky 8](#rocky-8)                     |       1.23.2 |   1.24 |          - |       - |
+| [Rocky 8](#rocky-8)                     |       1.23.2 |   1.24 |       1.37 |    1.38 |
 | [Rocky 9](#rocky-9)                     |         1.30 |      - |          - |       - |
 | [Rocky 10](#rocky-10)                   |         1.35 |      - |          - |       - |
 | Ubuntu 16.04                            |          1.5 |   1.10 |       1.17 |    1.20 |
