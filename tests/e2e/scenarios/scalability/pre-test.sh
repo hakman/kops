@@ -48,5 +48,4 @@ EOF
 fi
 
 kops update cluster --yes
-# TODO: Replaced with `kops validate instancegroup --wait 10m` when it's fixed for 5k node clusters.
-sleep 120 # should take around 2 minutes to get node read
+kops validate cluster --instance-group addons --wait 10m
