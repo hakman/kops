@@ -26,9 +26,7 @@ import (
 	"time"
 
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 	"k8s.io/kops/pkg/commands/commandutils"
-	"k8s.io/kops/pkg/kubeconfig"
 	"k8s.io/kops/upup/pkg/fi/cloudup"
 	"k8s.io/kubectl/pkg/util/i18n"
 	"k8s.io/kubectl/pkg/util/templates"
@@ -229,10 +227,22 @@ func RunValidateCluster(ctx context.Context, f *util.Factory, out io.Writer, opt
 		return nil, err
 	}
 
-	restConfig, k8sClient, err := buildValidationClient(ctx, f, cluster, options.CreateKubecfgOptions)
+	restConfig, err := f.RESTConfig(ctx, cluster, options.CreateKubecfgOptions)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting rest config: %w", err)
 	}
+
+	httpClient, err := f.HTTPClient(restConfig)
+	if err != nil {
+		return nil, fmt.Errorf("getting http client: %w", err)
+	}
+
+	k8sClient, err := kubernetes.NewForConfigAndClient(restConfig, httpClient)
+	if err != nil {
+		return nil, fmt.Errorf("building kubernetes client: %w", err)
+	}
+
+	timeout := time.Now().Add(options.wait)
 
 	var validator validation.ClusterValidator
 	if scoped {
@@ -244,17 +254,73 @@ func RunValidateCluster(ctx context.Context, f *util.Factory, out io.Writer, opt
 		return nil, fmt.Errorf("unexpected error creating validator: %v", err)
 	}
 
-	loop := &validationLoop{
-		subject:  subject,
-		output:   options.output,
-		wait:     options.wait,
-		count:    options.count,
-		interval: options.interval,
-		outputTable: func(result *validation.ValidationCluster) error {
-			return validateClusterOutputTable(result, cluster, instanceGroups, readyMessage, out)
-		},
+	consecutive := 0
+	for {
+		if options.wait > 0 && time.Now().After(timeout) && consecutive == 0 {
+			return nil, fmt.Errorf("wait time exceeded during validation")
+		}
+
+		result, err := validator.Validate(ctx)
+		if err != nil {
+			consecutive = 0
+			if options.wait > 0 {
+				klog.Warningf("(will retry): unexpected error during validation: %v", err)
+				time.Sleep(options.interval)
+				continue
+			} else {
+				return nil, fmt.Errorf("unexpected error during validation: %v", err)
+			}
+		}
+
+		switch options.output {
+		case OutputTable:
+			if err := validateClusterOutputTable(result, cluster, instanceGroups, readyMessage, out); err != nil {
+				return nil, err
+			}
+		case OutputYaml:
+			y, err := yaml.Marshal(result)
+			if err != nil {
+				return nil, fmt.Errorf("unable to marshal YAML: %v", err)
+			}
+			if _, err := out.Write(y); err != nil {
+				return nil, fmt.Errorf("error writing to output: %v", err)
+			}
+		case OutputJSON:
+			j, err := json.Marshal(result)
+			if err != nil {
+				return nil, fmt.Errorf("unable to marshal JSON: %v", err)
+			}
+			if _, err := out.Write(j); err != nil {
+				return nil, fmt.Errorf("error writing to output: %v", err)
+			}
+		default:
+			return nil, fmt.Errorf("unknown output format: %q", options.output)
+		}
+
+		if len(result.Failures) == 0 {
+			consecutive++
+			if consecutive < options.count {
+				klog.Infof("(will retry): %s passed validation %d consecutive times", subject, consecutive)
+				if options.wait > 0 {
+					time.Sleep(options.interval)
+					continue
+				} else {
+					return nil, fmt.Errorf("%s passed validation %d consecutive times", subject, consecutive)
+				}
+			} else {
+				return result, nil
+			}
+		} else {
+			if options.wait > 0 {
+				klog.Warningf("(will retry): %s not yet healthy", subject)
+				consecutive = 0
+				time.Sleep(options.interval)
+				continue
+			} else {
+				return nil, fmt.Errorf("%s not yet healthy", subject)
+			}
+		}
 	}
-	return loop.run(ctx, validator, out)
 }
 
 // selectInstanceGroupsToValidate resolves --instance-group and --instance-group-roles
@@ -305,112 +371,6 @@ func selectInstanceGroupsToValidate(items []kopsapi.InstanceGroup, instanceGroup
 	}
 
 	return selected, nil
-}
-
-// buildValidationClient builds the client used to reach the API server of the cluster being validated.
-func buildValidationClient(ctx context.Context, f *util.Factory, cluster *kopsapi.Cluster, options kubeconfig.CreateKubecfgOptions) (*rest.Config, kubernetes.Interface, error) {
-	restConfig, err := f.RESTConfig(ctx, cluster, options)
-	if err != nil {
-		return nil, nil, fmt.Errorf("getting rest config: %w", err)
-	}
-
-	httpClient, err := f.HTTPClient(restConfig)
-	if err != nil {
-		return nil, nil, fmt.Errorf("getting http client: %w", err)
-	}
-
-	k8sClient, err := kubernetes.NewForConfigAndClient(restConfig, httpClient)
-	if err != nil {
-		return nil, nil, fmt.Errorf("building kubernetes client: %w", err)
-	}
-
-	return restConfig, k8sClient, nil
-}
-
-// validationLoop validates repeatedly, until the required number of consecutive
-// validations pass or the wait time is exceeded.
-type validationLoop struct {
-	// subject is what is being validated, as named in the messages to the user.
-	subject  string
-	output   string
-	wait     time.Duration
-	count    int
-	interval time.Duration
-
-	// outputTable writes a validation result in the table output format.
-	outputTable func(result *validation.ValidationCluster) error
-}
-
-func (l *validationLoop) run(ctx context.Context, validator validation.ClusterValidator, out io.Writer) (*validation.ValidationCluster, error) {
-	timeout := time.Now().Add(l.wait)
-
-	consecutive := 0
-	for {
-		if l.wait > 0 && time.Now().After(timeout) && consecutive == 0 {
-			return nil, fmt.Errorf("wait time exceeded during validation")
-		}
-
-		result, err := validator.Validate(ctx)
-		if err != nil {
-			consecutive = 0
-			if l.wait > 0 {
-				klog.Warningf("(will retry): unexpected error during validation: %v", err)
-				time.Sleep(l.interval)
-				continue
-			} else {
-				return nil, fmt.Errorf("unexpected error during validation: %v", err)
-			}
-		}
-
-		switch l.output {
-		case OutputTable:
-			if err := l.outputTable(result); err != nil {
-				return nil, err
-			}
-		case OutputYaml:
-			y, err := yaml.Marshal(result)
-			if err != nil {
-				return nil, fmt.Errorf("unable to marshal YAML: %v", err)
-			}
-			if _, err := out.Write(y); err != nil {
-				return nil, fmt.Errorf("error writing to output: %v", err)
-			}
-		case OutputJSON:
-			j, err := json.Marshal(result)
-			if err != nil {
-				return nil, fmt.Errorf("unable to marshal JSON: %v", err)
-			}
-			if _, err := out.Write(j); err != nil {
-				return nil, fmt.Errorf("error writing to output: %v", err)
-			}
-		default:
-			return nil, fmt.Errorf("unknown output format: %q", l.output)
-		}
-
-		if len(result.Failures) == 0 {
-			consecutive++
-			if consecutive < l.count {
-				klog.Infof("(will retry): %s passed validation %d consecutive times", l.subject, consecutive)
-				if l.wait > 0 {
-					time.Sleep(l.interval)
-					continue
-				} else {
-					return nil, fmt.Errorf("%s passed validation %d consecutive times", l.subject, consecutive)
-				}
-			} else {
-				return result, nil
-			}
-		} else {
-			if l.wait > 0 {
-				klog.Warningf("(will retry): %s not yet healthy", l.subject)
-				consecutive = 0
-				time.Sleep(l.interval)
-				continue
-			} else {
-				return nil, fmt.Errorf("%s not yet healthy", l.subject)
-			}
-		}
-	}
 }
 
 func validateClusterOutputTable(result *validation.ValidationCluster, cluster *kopsapi.Cluster, instanceGroups []kopsapi.InstanceGroup, readyMessage string, out io.Writer) error {
