@@ -1535,7 +1535,7 @@ func Test_ValidateInstanceGroups(t *testing.T) {
 
 			objects := append(makePodList(tc.pods), addonsNode, otherNode, otherControlPlaneNode)
 			restConfig := &rest.Config{Host: "https://api.testcluster.k8s.local"}
-			validator, err := NewInstanceGroupValidator(cluster, mockcloud, []*kopsapi.InstanceGroup{addons}, 0, restConfig, fake.NewClientset(objects...))
+			validator, err := NewInstanceGroupValidator(cluster, mockcloud, []*kopsapi.InstanceGroup{addons}, nil, nil, 0, restConfig, fake.NewClientset(objects...))
 			require.NoError(t, err)
 			v, err := validator.Validate(context.TODO())
 			require.NoError(t, err)
@@ -1593,7 +1593,7 @@ func Test_ValidateInstanceGroups(t *testing.T) {
 		})
 		objects := append(pods, cpNode, otherNode, otherControlPlaneNode)
 		restConfig := &rest.Config{Host: "https://api.testcluster.k8s.local"}
-		validator, err := NewInstanceGroupValidator(cluster, mockcloud, []*kopsapi.InstanceGroup{cpIG}, 0, restConfig, fake.NewClientset(objects...))
+		validator, err := NewInstanceGroupValidator(cluster, mockcloud, []*kopsapi.InstanceGroup{cpIG}, nil, nil, 0, restConfig, fake.NewClientset(objects...))
 		require.NoError(t, err)
 		v, err := validator.Validate(context.TODO())
 		require.NoError(t, err)
@@ -1608,6 +1608,56 @@ func Test_ValidateInstanceGroups(t *testing.T) {
 		}
 		if !assert.ElementsMatch(t, expected, v.Failures) {
 			printDebug(t, v)
+		}
+	})
+
+	t.Run("filters narrow the validation within the instance groups", func(t *testing.T) {
+		nodesIG := &kopsapi.InstanceGroup{
+			ObjectMeta: metav1.ObjectMeta{Name: "nodes"},
+			Spec:       kopsapi.InstanceGroupSpec{Role: kopsapi.InstanceGroupRoleNode},
+		}
+		groups := map[string]*cloudinstances.CloudInstanceGroup{
+			"addons": {
+				InstanceGroup: addons,
+				MinSize:       1,
+				TargetSize:    1,
+				Ready:         []*cloudinstances.CloudInstance{{ID: "i-00001", Node: addonsNode}},
+			},
+			"nodes": {
+				InstanceGroup: nodesIG,
+				MinSize:       1,
+				TargetSize:    1,
+				Ready:         []*cloudinstances.CloudInstance{{ID: "i-00002", Node: otherNode}},
+			},
+		}
+
+		mockcloud := BuildMockCloud(t, groups, cluster, []kopsapi.InstanceGroup{*addons, *nodesIG})
+		pods := makePodList([]map[string]string{
+			{
+				"name":              "not-ready",
+				"priorityClassName": "system-node-critical",
+				"phase":             string(v1.PodRunning),
+				"ready":             "false",
+				"nodeName":          "addons-1",
+			},
+		})
+		objects := append(pods, addonsNode, otherNode)
+		restConfig := &rest.Config{Host: "https://api.testcluster.k8s.local"}
+
+		// The instance group filter skips the group whose node is not ready,
+		// and the pod filter skips the pod that is not ready.
+		filterInstanceGroups := func(ig *kopsapi.InstanceGroup) bool { return ig.Name == "addons" }
+		filterPods := func(pod *v1.Pod) bool { return false }
+		validator, err := NewInstanceGroupValidator(cluster, mockcloud, []*kopsapi.InstanceGroup{addons, nodesIG}, filterInstanceGroups, filterPods, 0, restConfig, fake.NewClientset(objects...))
+		require.NoError(t, err)
+		v, err := validator.Validate(context.TODO())
+		require.NoError(t, err)
+
+		if !assert.Empty(t, v.Failures) {
+			printDebug(t, v)
+		}
+		if assert.Len(t, v.Nodes, 1) {
+			assert.Equal(t, "addons-1", v.Nodes[0].Name)
 		}
 	})
 }

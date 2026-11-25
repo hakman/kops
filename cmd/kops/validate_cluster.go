@@ -246,7 +246,7 @@ func RunValidateCluster(ctx context.Context, f *util.Factory, out io.Writer, opt
 
 	var validator validation.ClusterValidator
 	if scoped {
-		validator, err = validation.NewInstanceGroupValidator(cluster, cloud, selectedInstanceGroups, options.MaxUnreadyNodes, restConfig, k8sClient)
+		validator, err = validation.NewInstanceGroupValidator(cluster, cloud, selectedInstanceGroups, options.filterInstanceGroups, options.filterPodsForValidation, options.MaxUnreadyNodes, restConfig, k8sClient)
 	} else {
 		validator, err = validation.NewClusterValidator(cluster, cloud, list, options.filterInstanceGroups, options.filterPodsForValidation, options.MaxUnreadyNodes, restConfig, k8sClient)
 	}

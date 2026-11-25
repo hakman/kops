@@ -67,7 +67,9 @@ type clusterValidatorImpl struct {
 	restConfig *rest.Config
 	k8sClient  kubernetes.Interface
 
-	// allInstanceGroups is the list of all instance groups in the cluster
+	// allInstanceGroups is the list of instance groups passed to the cloud provider:
+	// all instance groups in the cluster, or only the selected ones when
+	// validating specific instance groups.
 	allInstanceGroups []*kops.InstanceGroup
 
 	// filterInstanceGroups is a function that returns true if the instance group should be validated
@@ -162,9 +164,26 @@ func NewClusterValidator(cluster *kops.Cluster, cloud fi.Cloud, instanceGroupLis
 // The rest of the cluster is ignored. In a very large cluster there is often a
 // node or a pod somewhere that is not ready, so validating the whole cluster
 // cannot be relied on to wait for a single instance group to come up.
-func NewInstanceGroupValidator(cluster *kops.Cluster, cloud fi.Cloud, instanceGroups []*kops.InstanceGroup, maxUnreadyNodes int, restConfig *rest.Config, k8sClient kubernetes.Interface) (ClusterValidator, error) {
+//
+// filterInstanceGroups and filterPodsForValidation narrow the validation further,
+// within the given instance groups and the pods on their nodes.
+func NewInstanceGroupValidator(cluster *kops.Cluster, cloud fi.Cloud, instanceGroups []*kops.InstanceGroup, filterInstanceGroups func(ig *kops.InstanceGroup) bool, filterPodsForValidation func(pod *v1.Pod) bool, maxUnreadyNodes int, restConfig *rest.Config, k8sClient kubernetes.Interface) (ClusterValidator, error) {
 	if len(instanceGroups) == 0 {
 		return nil, fmt.Errorf("no InstanceGroup objects to validate")
+	}
+
+	// If no filter is provided, validate all the given instance groups
+	if filterInstanceGroups == nil {
+		filterInstanceGroups = func(ig *kops.InstanceGroup) bool {
+			return true
+		}
+	}
+
+	// If no filter is provided, validate all pods on the nodes of the given instance groups
+	if filterPodsForValidation == nil {
+		filterPodsForValidation = func(pod *v1.Pod) bool {
+			return true
+		}
 	}
 
 	return &clusterValidatorImpl{
@@ -175,8 +194,8 @@ func NewInstanceGroupValidator(cluster *kops.Cluster, cloud fi.Cloud, instanceGr
 		allInstanceGroups:        instanceGroups,
 		restConfig:               restConfig,
 		k8sClient:                k8sClient,
-		filterInstanceGroups:     func(ig *kops.InstanceGroup) bool { return true },
-		filterPodsForValidation:  func(pod *v1.Pod) bool { return true },
+		filterInstanceGroups:     filterInstanceGroups,
+		filterPodsForValidation:  filterPodsForValidation,
 		podsOnValidatedNodesOnly: true,
 		maxUnreadyNodes:          maxUnreadyNodes,
 	}, nil
