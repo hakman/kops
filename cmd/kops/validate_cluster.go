@@ -190,36 +190,21 @@ func RunValidateCluster(ctx context.Context, f *util.Factory, out io.Writer, opt
 
 	var instanceGroups []kopsapi.InstanceGroup
 	var selectedInstanceGroups []*kopsapi.InstanceGroup
-	subject := "cluster"
-	readyMessage := fmt.Sprintf("Your cluster %s is ready", cluster.Name)
 
 	if scoped {
 		selectedInstanceGroups, err = selectInstanceGroupsToValidate(list.Items, options.InstanceGroups, options.InstanceGroupRoles)
 		if err != nil {
 			return nil, err
 		}
-
-		names := make([]string, 0, len(selectedInstanceGroups))
 		for _, ig := range selectedInstanceGroups {
-			names = append(names, ig.ObjectMeta.Name)
 			instanceGroups = append(instanceGroups, *ig)
-		}
-
-		subject = fmt.Sprintf("instance group %s", names[0])
-		readyMessage = fmt.Sprintf("Your %s is ready", subject)
-		if len(names) > 1 {
-			subject = fmt.Sprintf("instance groups %s", strings.Join(names, ", "))
-			readyMessage = fmt.Sprintf("Your %s are ready", subject)
-		}
-
-		if options.output == OutputTable {
-			fmt.Fprintf(out, "Validating %s in cluster %v\n\n", subject, cluster.ObjectMeta.Name)
 		}
 	} else {
 		instanceGroups = append(instanceGroups, list.Items...)
-		if options.output == OutputTable {
-			fmt.Fprintf(out, "Validating cluster %v\n\n", cluster.ObjectMeta.Name)
-		}
+	}
+
+	if options.output == OutputTable {
+		fmt.Fprintf(out, "Validating cluster %v\n\n", cluster.ObjectMeta.Name)
 	}
 
 	cloud, err := cloudup.BuildCloud(cluster)
@@ -274,7 +259,7 @@ func RunValidateCluster(ctx context.Context, f *util.Factory, out io.Writer, opt
 
 		switch options.output {
 		case OutputTable:
-			if err := validateClusterOutputTable(result, cluster, instanceGroups, readyMessage, out); err != nil {
+			if err := validateClusterOutputTable(result, cluster, instanceGroups, out); err != nil {
 				return nil, err
 			}
 		case OutputYaml:
@@ -300,24 +285,24 @@ func RunValidateCluster(ctx context.Context, f *util.Factory, out io.Writer, opt
 		if len(result.Failures) == 0 {
 			consecutive++
 			if consecutive < options.count {
-				klog.Infof("(will retry): %s passed validation %d consecutive times", subject, consecutive)
+				klog.Infof("(will retry): cluster passed validation %d consecutive times", consecutive)
 				if options.wait > 0 {
 					time.Sleep(options.interval)
 					continue
 				} else {
-					return nil, fmt.Errorf("%s passed validation %d consecutive times", subject, consecutive)
+					return nil, fmt.Errorf("cluster passed validation %d consecutive times", consecutive)
 				}
 			} else {
 				return result, nil
 			}
 		} else {
 			if options.wait > 0 {
-				klog.Warningf("(will retry): %s not yet healthy", subject)
+				klog.Warningf("(will retry): cluster not yet healthy")
 				consecutive = 0
 				time.Sleep(options.interval)
 				continue
 			} else {
-				return nil, fmt.Errorf("%s not yet healthy", subject)
+				return nil, fmt.Errorf("cluster not yet healthy")
 			}
 		}
 	}
@@ -373,7 +358,7 @@ func selectInstanceGroupsToValidate(items []kopsapi.InstanceGroup, instanceGroup
 	return selected, nil
 }
 
-func validateClusterOutputTable(result *validation.ValidationCluster, cluster *kopsapi.Cluster, instanceGroups []kopsapi.InstanceGroup, readyMessage string, out io.Writer) error {
+func validateClusterOutputTable(result *validation.ValidationCluster, cluster *kopsapi.Cluster, instanceGroups []kopsapi.InstanceGroup, out io.Writer) error {
 	t := &tables.Table{}
 	t.AddColumn("NAME", func(c kopsapi.InstanceGroup) string {
 		return c.ObjectMeta.Name
@@ -439,7 +424,7 @@ func validateClusterOutputTable(result *validation.ValidationCluster, cluster *k
 
 		fmt.Fprintf(out, "\nValidation Failed\n")
 	} else {
-		fmt.Fprintf(out, "\n%s\n", readyMessage)
+		fmt.Fprintf(out, "\nYour cluster %s is ready\n", cluster.Name)
 	}
 
 	return nil
