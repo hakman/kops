@@ -88,8 +88,10 @@ type ValidateClusterOptions struct {
 	// filterInstanceGroups is a function that returns true if the instance group should be validated
 	filterInstanceGroups func(ig *kopsapi.InstanceGroup) bool
 
-	// filterPodsForValidation is a function that returns true if the pod should be validated
-	filterPodsForValidation func(pod *v1.Pod) bool
+	// filterPodsForValidation is a function that returns true if the pod should be validated.
+	// ig is the instance group of the node the pod is scheduled on. It is nil when
+	// the pod is not scheduled, or its node is not in a validated instance group.
+	filterPodsForValidation func(pod *v1.Pod, ig *kopsapi.InstanceGroup) bool
 
 	ExportKubeconfigOptions
 }
@@ -186,22 +188,34 @@ func RunValidateCluster(ctx context.Context, f *util.Factory, out io.Writer, opt
 		klog.V(2).Infof("instance group: %#v\n\n", ig.Spec)
 	}
 
-	scoped := len(options.InstanceGroups) != 0 || len(options.InstanceGroupRoles) != 0
+	filterPodsForValidation := options.filterPodsForValidation
 
-	var instanceGroups []kopsapi.InstanceGroup
-	var selectedInstanceGroups []*kopsapi.InstanceGroup
-
-	if scoped {
-		selectedInstanceGroups, err = selectInstanceGroupsToValidate(list.Items, options.InstanceGroups, options.InstanceGroupRoles)
+	if len(options.InstanceGroups) != 0 || len(options.InstanceGroupRoles) != 0 {
+		selected, err := selectInstanceGroupsToValidate(list.Items, options.InstanceGroups, options.InstanceGroupRoles)
 		if err != nil {
 			return nil, err
 		}
-		for _, ig := range selectedInstanceGroups {
-			instanceGroups = append(instanceGroups, *ig)
+
+		// The validator only gets the selected instance groups, so the cloud
+		// groups, instances and nodes of all the others are not validated.
+		var items []kopsapi.InstanceGroup
+		for _, ig := range selected {
+			items = append(items, *ig)
 		}
-	} else {
-		instanceGroups = append(instanceGroups, list.Items...)
+		list.Items = items
+
+		// Critical pods are only validated on the nodes of the selected instance
+		// groups. In a very large cluster there is often a pod somewhere that is
+		// not ready, and it does not say anything about these instance groups.
+		filterPodsForValidation = func(pod *v1.Pod, ig *kopsapi.InstanceGroup) bool {
+			if ig == nil {
+				return false
+			}
+			return options.filterPodsForValidation == nil || options.filterPodsForValidation(pod, ig)
+		}
 	}
+
+	instanceGroups := list.Items
 
 	if options.output == OutputTable {
 		fmt.Fprintf(out, "Validating cluster %v\n\n", cluster.ObjectMeta.Name)
@@ -229,12 +243,7 @@ func RunValidateCluster(ctx context.Context, f *util.Factory, out io.Writer, opt
 
 	timeout := time.Now().Add(options.wait)
 
-	var validator validation.ClusterValidator
-	if scoped {
-		validator, err = validation.NewInstanceGroupValidator(cluster, cloud, selectedInstanceGroups, options.filterInstanceGroups, options.filterPodsForValidation, options.MaxUnreadyNodes, restConfig, k8sClient)
-	} else {
-		validator, err = validation.NewClusterValidator(cluster, cloud, list, options.filterInstanceGroups, options.filterPodsForValidation, options.MaxUnreadyNodes, restConfig, k8sClient)
-	}
+	validator, err := validation.NewClusterValidator(cluster, cloud, list, options.filterInstanceGroups, filterPodsForValidation, options.MaxUnreadyNodes, restConfig, k8sClient)
 	if err != nil {
 		return nil, fmt.Errorf("unexpected error creating validator: %v", err)
 	}

@@ -164,7 +164,7 @@ func RunReconcileCluster(ctx context.Context, f *util.Factory, out io.Writer, op
 		}
 
 		// Ignore all pods, we just want to check the control plane is responding
-		opt.filterPodsForValidation = func(pod *v1.Pod) bool {
+		opt.filterPodsForValidation = func(pod *v1.Pod, ig *kops.InstanceGroup) bool {
 			return false
 		}
 
