@@ -458,16 +458,58 @@ func TestBuildKarpenterKubeletConfiguration(t *testing.T) {
 				MaxPods:        new(int32(50)),
 				SystemReserved: map[string]string{"cpu": "500m"},
 				KubeReserved:   map[string]string{"memory": "1G"},
+				EvictionHard:   new("memory.available<250Mi"),
 			},
 			expected: &karpenterKubeletConfiguration{
 				MaxPods:        new(int32(50)),
 				SystemReserved: map[string]string{"cpu": "500m"},
 				KubeReserved:   map[string]string{"memory": "1G"},
+				EvictionHard:   map[string]string{"memory.available": "250Mi"},
 			},
 		},
 		{
 			desc:    "unsupported field only is ignored",
 			kubelet: &kops.KubeletConfigSpec{KubeReservedCgroup: "/kube"},
+		},
+		{
+			desc: "evictionHard kOps default",
+			kubelet: &kops.KubeletConfigSpec{
+				EvictionHard: new("memory.available<100Mi,nodefs.available<10%,nodefs.inodesFree<5%,imagefs.available<10%,imagefs.inodesFree<5%"),
+			},
+			expected: &karpenterKubeletConfiguration{
+				EvictionHard: map[string]string{
+					"memory.available": "100Mi",
+					"nodefs.available": "10%",
+				},
+			},
+		},
+		{
+			desc: "evictionHard with only nodefs.available",
+			kubelet: &kops.KubeletConfigSpec{
+				EvictionHard: new("nodefs.available<15%,pid.available<5%"),
+			},
+			expected: &karpenterKubeletConfiguration{
+				EvictionHard: map[string]string{"nodefs.available": "15%"},
+			},
+		},
+		{
+			desc: "evictionHard without the signals that reduce allocatable capacity",
+			kubelet: &kops.KubeletConfigSpec{
+				EvictionHard: new("imagefs.available<10%,pid.available<5%"),
+			},
+		},
+		{
+			desc: "evictionHard repeated signal, last value wins",
+			kubelet: &kops.KubeletConfigSpec{
+				EvictionHard: new("memory.available<250Mi, memory.available<500Mi"),
+			},
+			expected: &karpenterKubeletConfiguration{
+				EvictionHard: map[string]string{"memory.available": "500Mi"},
+			},
+		},
+		{
+			desc:    "empty evictionHard",
+			kubelet: &kops.KubeletConfigSpec{EvictionHard: new("")},
 		},
 	}
 
@@ -479,11 +521,26 @@ func TestBuildKarpenterKubeletConfiguration(t *testing.T) {
 					Kubelet: g.kubelet,
 				},
 			}
-			actual := buildKarpenterKubeletConfiguration(ig)
+			actual, err := buildKarpenterKubeletConfiguration(ig)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
 			if !reflect.DeepEqual(actual, g.expected) {
 				t.Errorf("expected %#v, got %#v", g.expected, actual)
 			}
 		})
+	}
+}
+
+func TestBuildKarpenterKubeletConfigurationInvalidEvictionHard(t *testing.T) {
+	ig := &kops.InstanceGroup{
+		Spec: kops.InstanceGroupSpec{
+			Role:    kops.InstanceGroupRoleNode,
+			Kubelet: &kops.KubeletConfigSpec{EvictionHard: new("memory.available")},
+		},
+	}
+	if _, err := buildKarpenterKubeletConfiguration(ig); err == nil {
+		t.Errorf("expected an error for an eviction threshold without a value")
 	}
 }
 

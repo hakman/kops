@@ -453,6 +453,167 @@ func TestCrossValidateKarpenterInstanceGroup(t *testing.T) {
 	}
 }
 
+func TestValidateKarpenterEvictionHard(t *testing.T) {
+	cluster := &kops.Cluster{
+		Spec: kops.ClusterSpec{
+			CloudProvider: kops.CloudProviderSpec{
+				AWS: &kops.AWSSpec{},
+			},
+			Karpenter: &kops.KarpenterConfig{Enabled: true},
+		},
+	}
+	invalid := []string{"Invalid value::spec.kubelet.evictionHard"}
+
+	grid := []struct {
+		desc         string
+		manager      kops.InstanceManager
+		evictionHard *string
+		expected     []string
+	}{
+		{
+			desc:    "not set",
+			manager: kops.InstanceManagerKarpenter,
+		},
+		{
+			desc:         "empty",
+			manager:      kops.InstanceManagerKarpenter,
+			evictionHard: new(""),
+		},
+		{
+			desc:         "kOps default",
+			manager:      kops.InstanceManagerKarpenter,
+			evictionHard: new("memory.available<100Mi,nodefs.available<10%,nodefs.inodesFree<5%,imagefs.available<10%,imagefs.inodesFree<5%"),
+		},
+		{
+			desc:         "percentage limits",
+			manager:      kops.InstanceManagerKarpenter,
+			evictionHard: new("memory.available<0%,nodefs.available<100%"),
+		},
+		{
+			desc:         "fractional percentage",
+			manager:      kops.InstanceManagerKarpenter,
+			evictionHard: new("memory.available<2.5%"),
+		},
+		{
+			desc:         "spaces around signals and values",
+			manager:      kops.InstanceManagerKarpenter,
+			evictionHard: new(" memory.available < 100Mi , nodefs.available < 10% "),
+		},
+		{
+			desc:         "other signals are not validated",
+			manager:      kops.InstanceManagerKarpenter,
+			evictionHard: new("imagefs.available<bogus,pid.available<"),
+		},
+		{
+			desc:         "last value wins for a repeated signal",
+			manager:      kops.InstanceManagerKarpenter,
+			evictionHard: new("memory.available<bogus,memory.available<100Mi"),
+		},
+		{
+			desc:         "invalid value on an InstanceGroup that Karpenter does not manage",
+			manager:      kops.InstanceManagerCloudGroup,
+			evictionHard: new("memory.available<100MB"),
+		},
+		{
+			desc:         "invalid quantity suffix",
+			manager:      kops.InstanceManagerKarpenter,
+			evictionHard: new("memory.available<100MB"),
+			expected:     invalid,
+		},
+		{
+			desc:         "zero quantity",
+			manager:      kops.InstanceManagerKarpenter,
+			evictionHard: new("memory.available<0"),
+			expected:     invalid,
+		},
+		{
+			desc:         "negative quantity",
+			manager:      kops.InstanceManagerKarpenter,
+			evictionHard: new("memory.available<-100Mi"),
+			expected:     invalid,
+		},
+		{
+			desc:         "empty value",
+			manager:      kops.InstanceManagerKarpenter,
+			evictionHard: new("nodefs.available<"),
+			expected:     invalid,
+		},
+		{
+			desc:         "percentage above 100",
+			manager:      kops.InstanceManagerKarpenter,
+			evictionHard: new("nodefs.available<110%"),
+			expected:     invalid,
+		},
+		{
+			desc:         "negative percentage",
+			manager:      kops.InstanceManagerKarpenter,
+			evictionHard: new("nodefs.available<-1%"),
+			expected:     invalid,
+		},
+		{
+			desc:         "NaN percentage",
+			manager:      kops.InstanceManagerKarpenter,
+			evictionHard: new("memory.available<NaN%"),
+			expected:     invalid,
+		},
+		{
+			desc:         "infinite percentage",
+			manager:      kops.InstanceManagerKarpenter,
+			evictionHard: new("memory.available<Inf%"),
+			expected:     invalid,
+		},
+		{
+			desc:         "repeated percent sign",
+			manager:      kops.InstanceManagerKarpenter,
+			evictionHard: new("memory.available<10%%"),
+			expected:     invalid,
+		},
+		{
+			desc:         "last value wins for a repeated signal, invalid",
+			manager:      kops.InstanceManagerKarpenter,
+			evictionHard: new("memory.available<100Mi,memory.available<bogus"),
+			expected:     invalid,
+		},
+		{
+			desc:         "threshold without a value",
+			manager:      kops.InstanceManagerKarpenter,
+			evictionHard: new("memory.available"),
+			expected:     invalid,
+		},
+		{
+			desc:         "trailing comma",
+			manager:      kops.InstanceManagerKarpenter,
+			evictionHard: new("memory.available<100Mi,"),
+			expected:     invalid,
+		},
+	}
+
+	for _, g := range grid {
+		t.Run(g.desc, func(t *testing.T) {
+			ig := createMinimalInstanceGroup()
+			ig.Spec.Manager = g.manager
+			ig.Spec.Image = "ami-0123456789abcdef0"
+			ig.Spec.Kubelet = &kops.KubeletConfigSpec{EvictionHard: g.evictionHard}
+
+			errs := CrossValidateInstanceGroup(ig, cluster, nil, true)
+			testErrors(t, g.desc, errs, g.expected)
+		})
+	}
+}
+
+func TestValidateKarpenterEvictionHardReportsEachSignal(t *testing.T) {
+	kubelet := &kops.KubeletConfigSpec{EvictionHard: new("nodefs.available<110%,memory.available<bogus")}
+	errs := validateKarpenterEvictionHard(kubelet, field.NewPath("spec", "kubelet", "evictionHard"))
+	if len(errs) != 2 {
+		t.Fatalf("expected 2 errors, got %d: %v", len(errs), errs)
+	}
+	for i, signal := range []string{"memory.available", "nodefs.available"} {
+		if !strings.Contains(errs[i].Detail, signal) {
+			t.Errorf("expected error %d to be about %s, got %q", i, signal, errs[i].Detail)
+		}
+	}
+}
+
 func TestValidateKarpenterStaticCapacity(t *testing.T) {
 	grid := []struct {
 		desc         string

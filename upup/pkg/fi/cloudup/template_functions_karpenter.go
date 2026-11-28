@@ -90,6 +90,7 @@ type karpenterKubeletConfiguration struct {
 	MaxPods        *int32            `json:"maxPods,omitempty"`
 	SystemReserved map[string]string `json:"systemReserved,omitempty"`
 	KubeReserved   map[string]string `json:"kubeReserved,omitempty"`
+	EvictionHard   map[string]string `json:"evictionHard,omitempty"`
 }
 
 // karpenterBlockDeviceMapping maps to EC2NodeClass.spec.blockDeviceMappings[]. kOps
@@ -248,6 +249,10 @@ func (tf *TemplateFunctions) buildKarpenterEC2NodeClass(ig *kops.InstanceGroup) 
 	if err != nil {
 		return nil, err
 	}
+	kubelet, err := buildKarpenterKubeletConfiguration(ig)
+	if err != nil {
+		return nil, fmt.Errorf("building kubelet configuration for %q: %w", ig.Name, err)
+	}
 	userData, err := tf.managedFileContents("nodeupscript-" + ig.Name)
 	if err != nil {
 		return nil, fmt.Errorf("reading userData for %q: %w", ig.Name, err)
@@ -301,25 +306,35 @@ func (tf *TemplateFunctions) buildKarpenterEC2NodeClass(ig *kops.InstanceGroup) 
 			SecurityGroupTerms:       securityGroupTerms,
 			InstanceProfile:          fi.ValueOf(instanceProfile.Name),
 			UserData:                 userData,
-			Kubelet:                  buildKarpenterKubeletConfiguration(ig),
+			Kubelet:                  kubelet,
 			MetadataOptions:          buildKarpenterMetadataOptions(ig),
 		},
 	}, nil
 }
 
-func buildKarpenterKubeletConfiguration(ig *kops.InstanceGroup) *karpenterKubeletConfiguration {
+// buildKarpenterKubeletConfiguration reads the InstanceGroup kubelet configuration, which
+// PopulateInstanceGroupSpec has already merged with the cluster spec.kubelet.
+func buildKarpenterKubeletConfiguration(ig *kops.InstanceGroup) (*karpenterKubeletConfiguration, error) {
 	if ig.Spec.Kubelet == nil {
-		return nil
+		return nil, nil
+	}
+	// Only the hard eviction thresholds that reduce the allocatable capacity of a node are
+	// set. Karpenter uses no other threshold, so the other thresholds are only set by the
+	// nodeup kubelet configuration.
+	evictionHard, err := kopsutil.AllocatableEvictionThresholds(fi.ValueOf(ig.Spec.Kubelet.EvictionHard))
+	if err != nil {
+		return nil, err
 	}
 	kubelet := &karpenterKubeletConfiguration{
 		MaxPods:        ig.Spec.Kubelet.MaxPods,
 		SystemReserved: ig.Spec.Kubelet.SystemReserved,
 		KubeReserved:   ig.Spec.Kubelet.KubeReserved,
+		EvictionHard:   evictionHard,
 	}
-	if kubelet.MaxPods == nil && len(kubelet.SystemReserved) == 0 && len(kubelet.KubeReserved) == 0 {
-		return nil
+	if kubelet.MaxPods == nil && len(kubelet.SystemReserved) == 0 && len(kubelet.KubeReserved) == 0 && len(kubelet.EvictionHard) == 0 {
+		return nil, nil
 	}
-	return kubelet
+	return kubelet, nil
 }
 
 func buildKarpenterMetadataOptions(ig *kops.InstanceGroup) *karpenterMetadataOptions {

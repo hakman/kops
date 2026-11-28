@@ -18,9 +18,11 @@ package validation
 
 import (
 	"fmt"
+	"maps"
 	"math"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"k8s.io/kops/pkg/nodeidentity/aws"
@@ -386,7 +388,42 @@ func validateKarpenterInstanceGroup(g *kops.InstanceGroup, cluster *kops.Cluster
 	allErrs = append(allErrs, validateKarpenterAMISelectorImage(g.Spec.Image, field.NewPath("spec", "image"))...)
 	allErrs = append(allErrs, validateKarpenterStaticCapacity(g, cluster)...)
 	allErrs = append(allErrs, validateKarpenterInstanceRequirements(g)...)
+	allErrs = append(allErrs, validateKarpenterEvictionHard(g.Spec.Kubelet, field.NewPath("spec", "kubelet", "evictionHard"))...)
 	return allErrs
+}
+
+// validateKarpenterEvictionHard validates the hard eviction thresholds that kOps sets in
+// EC2NodeClass.spec.kubelet. Karpenter computes the allocatable capacity of each instance
+// type from these values without validating them first, and panics on a value that it
+// cannot parse.
+func validateKarpenterEvictionHard(kubelet *kops.KubeletConfigSpec, fldPath *field.Path) field.ErrorList {
+	if kubelet == nil || kubelet.EvictionHard == nil {
+		return nil
+	}
+	thresholds, err := util.AllocatableEvictionThresholds(*kubelet.EvictionHard)
+	if err != nil {
+		return field.ErrorList{field.Invalid(fldPath, *kubelet.EvictionHard, err.Error())}
+	}
+	var allErrs field.ErrorList
+	for _, signal := range slices.Sorted(maps.Keys(thresholds)) {
+		if !isValidEvictionThreshold(thresholds[signal]) {
+			allErrs = append(allErrs, field.Invalid(fldPath, *kubelet.EvictionHard, fmt.Sprintf("%s must be a positive resource quantity or a percentage between 0%% and 100%%", signal)))
+		}
+	}
+	return allErrs
+}
+
+// isValidEvictionThreshold returns true if the value is a percentage between 0% and 100%
+// or a positive resource quantity. The kubelet does not start with a quantity that is zero
+// or negative.
+func isValidEvictionThreshold(value string) bool {
+	if percentage, found := strings.CutSuffix(value, "%"); found {
+		p, err := strconv.ParseFloat(percentage, 64)
+		// NaN parses without an error. It is rejected because both comparisons are false for it.
+		return err == nil && p >= 0 && p <= 100
+	}
+	quantity, err := resource.ParseQuantity(value)
+	return err == nil && quantity.Sign() > 0
 }
 
 func validateKarpenterInstanceRequirements(g *kops.InstanceGroup) field.ErrorList {
